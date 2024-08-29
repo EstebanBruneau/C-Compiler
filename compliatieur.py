@@ -374,4 +374,4 @@ while T is not None and T.type != "tok_eof":
     
     gencode(N)
     
-    print("dbg\nhalt")
+print("dbg\nhalt")
