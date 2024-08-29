@@ -23,6 +23,13 @@ class Node:
         self.type = type
         self.value = value
         self.children = child_list
+        
+    def add_child(self, child):
+        self.children.append(child)
+        
+    def __str__(self):
+        return self.type + " " + self.value + " " + str(self.children)
+                
     
 
 tok_type_list = [
@@ -37,7 +44,7 @@ tok_type_list = [
 ]
 
 nod_type_list = [
-    "nod_unary_plus", "nod_binary_plus", "nod_unary_minus", "nod_unary_not", 
+    "nod_unary_plus", "nod_binary_plus", "nod_unary_minus", "nod_binary_minus", "nod_logical_not"
 ]
 
 def next():
@@ -248,6 +255,13 @@ def check(type):
         return True
     return False
 
+def accept(type):
+    global T
+    if T is None:
+        raise Exception("Error: unexpected None token at line", line_counter, character_counter)
+    if T.type != type:
+        raise Exception("Error: Found token", T.type, "instead of", type, "at line", T.line, character_counter)
+    next()
 
 def analex(code):
     global line_counter, character_counter, T
@@ -259,47 +273,87 @@ def analex(code):
         next()
         if T is not None:
             list_tokens.append(T)
+            
+    T = list_tokens[0]
+    character_counter = 1
+    line_counter = 1
+    
     return list_tokens
 
+def anasem(N):
+    pass
 
-    
-def Atom():
-    global T
-    
+def Optim(N):
+    return N
+
+def atom():
+    global T, L
+
     if check("tok_constant"):
-        pass
-    
+        value = L.value  # Capture the value of the constant token
+        return Node("nod_constant", value, [])
+        
     elif check("tok_open_parentheses"):
-        
-        Tree = Expression()
-        
-        if not check("tok_close_parentheses"):
-            print("Error: missing ')'")
-            return None
-
+        A = expression()
+        accept("tok_close_parentheses")
+        return A
+    raise Exception("Error: unexpected token", T.type, "at line", T.line)
             
-def S():
-    pass
+def suffix():
+    return atom()
 
-def P():
-    pass
+def prefix():
+    global T, L
+    if check("tok_plus"):
+        A = prefix()
+        return A
+    elif check("tok_minus"):
+        A = prefix()
+        return Node("nod_unary_minus", "-", [A])
+    elif check("tok_not"):
+        A = prefix()
+        return Node("nod_logical_not", "!", [A])
+    else:
+        return suffix()
 
-def Expression():
-    pass
+def expression():
+    return prefix()
 
-def I():
-    pass
+def instruction():
+    return expression()
 
-def F():
-    pass
+def function():
+    return instruction()
 
-
-            
+def anasynth():
+    global T
+    while T is not None and T.type != "tok_eof":
+        return instruction()
+        
+def gencode(N):
+    if N.type == "nod_constant":
+        print("push", N.value)
+    elif N.type == "nod_unary_minus":
+        print("push 0")
+        gencode(N.children[0])
+        print("sub")
+    elif N.type == "nod_binary_plus":
+        gencode(N.children[0])
+        gencode(N.children[1])
+        print("add")
+    elif N.type == "nod_binary_minus":
+        gencode(N.children[0])
+        gencode(N.children[1])
+        print("sub")
+    elif N.type == "nod_logical_not":
+        gencode(N.children[0])
+        print("not")
+  
 # ---------------------------- degub ----------------------------
             
             
-for token in analex(code):
-    print(token.type, token.value, token.line)
+# for token in analex(code):
+#     print(token.type, token.value, token.line)
     
     
 # ---------------------------- main ----------------------------
@@ -307,18 +361,17 @@ for token in analex(code):
 print(".start")
 
 
-for i in range(1, argc):
+analex(code)
+
+
+while T is not None and T.type != "tok_eof":
     
-    analex(argv[i])
+    N = anasynth()
     
-    while T.type != "tok_eof":
-        
-        # create node N
-        
-        anasem(N)
-        
-        N = Optim(N)
-        
-        gencode(N)
-        
-        print("dbg\nhalt")
+    anasem(N)
+     
+    N = Optim(N)
+    
+    gencode(N)
+    
+    print("dbg\nhalt")
