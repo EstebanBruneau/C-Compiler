@@ -18,6 +18,9 @@ class Token:
         self.value = value
         self.line = line
         
+    def __str__(self):
+        return "Token: " + self.type + " " + str(self.value) + " " + str(self.line)
+        
 class Node:
     def __init__(self, type, value, child_list):
         self.type = type
@@ -28,10 +31,8 @@ class Node:
         self.children.append(child)
         
     def __str__(self):
-        return self.type + " " + self.value + " " + str(self.children)
+        return "Node: " + self.type + " " + str(self.value) + " " + str(self.children)
                 
-    
-
 tok_type_list = [
     "tok_send", "tok_recieve",
     "tok_int", "tok_plus", "tok_minus", "tok_*", "tok_div", "tok_not", 
@@ -44,7 +45,9 @@ tok_type_list = [
 ]
 
 nod_type_list = [
-    "nod_unary_plus", "nod_binary_plus", "nod_unary_minus", "nod_binary_minus", "nod_logical_not"
+    "nod_eof",
+    "nod_unary_plus", "nod_binary_plus", "nod_unary_minus", "nod_binary_minus", "nod_logical_not",
+    "nod_multiplication", "nod_division", "nod_modulo"
 ]
 
 def next():
@@ -278,6 +281,7 @@ def analex(code):
     character_counter = 1
     line_counter = 1
     
+    # print("Analex done")
     return list_tokens
 
 def anasem(N):
@@ -316,11 +320,48 @@ def prefix():
     else:
         return suffix()
 
+
+# priority, right_associative, node_type
+operators = {
+    "tok_*": (7, 1, "nod_multiplication"),
+    "tok_div": (7, 1, "nod_division"),
+    "tok_mod": (7, 1, "nod_modulo"),
+    "tok_plus": (6, 1, "nod_binary_plus"),
+    "tok_minus": (6, 1, "nod_binary_minus"),
+    "tok_greater": (5, 1, "nod_greater"),
+    "tok_less": (5, 1, "nod_less"),
+    "tok_greater_equal": (5, 1, "nod_greater_equal"),
+    "tok_less_equal": (5, 1, "nod_less_equal"),
+    "tok_double_equal": (4, 1, "nod_double_equal"),
+    "tok_different": (4, "nod_different"),
+    "tok_and": (3, 1, "nod_and"),
+    "tok_or": (2, 1, "nod_or"),
+    "tok_assign": (1, 0, "nod_assign")
+}
+    
 def expression():
-    return prefix()
+    return expression2(0)
+
+def expression2(pmin):
+    Node1 = prefix()
+    while T is not None and T.type != "tok_eof":
+        op = operators.get(T.type)
+        if op is None or op[0] < pmin:
+            return Node1
+        next()
+        if T is None:
+            raise Exception("Error: unexpected None token after operator")
+        Node2 = expression2(op[0] + op[1]) # +1 if right associative
+        # print(f"\nNode1: {Node1}\nNode2: {Node2}")
+        Node1 = Node(op[2], op[2], [Node1, Node2])  # Use op[2] for the node type
+    return Node1
 
 def instruction():
-    return expression()
+    node = expression()
+    # print(node)
+    if node is None:
+        raise Exception("Error: expression returned None")
+    return node
 
 def function():
     return instruction()
@@ -328,9 +369,27 @@ def function():
 def anasynth():
     global T
     while T is not None and T.type != "tok_eof":
-        return instruction()
-        
+        # print("processing token ", T.type, T.value, "at line", T.line)
+        N = instruction()
+        if N is not None:
+            # print(f"generated node: {N}")
+            gencode(N)
+        else:
+            raise Exception("Error: instruction returned None")
+    return Node("nod_eof", "eof", [])
+
 def gencode(N):
+    def binary_operation(N, operation):
+        gencode(N.children[0])
+        gencode(N.children[1])
+        print(operation)
+        
+    if N is None:
+        raise Exception("Error: gencode revceived None")
+    
+    if N.type == "nod_eof":
+        return
+    # print(f"Generating code for node {N}")
     if N.type == "nod_constant":
         print("push", N.value)
     elif N.type == "nod_unary_minus":
@@ -338,16 +397,20 @@ def gencode(N):
         gencode(N.children[0])
         print("sub")
     elif N.type == "nod_binary_plus":
-        gencode(N.children[0])
-        gencode(N.children[1])
-        print("add")
+        binary_operation(N, "add")
     elif N.type == "nod_binary_minus":
-        gencode(N.children[0])
-        gencode(N.children[1])
-        print("sub")
+        binary_operation(N, "sub")
     elif N.type == "nod_logical_not":
         gencode(N.children[0])
         print("not")
+    elif N.type == "nod_multiplication":
+        binary_operation(N, "mul")
+    elif N.type == "nod_division":
+        binary_operation(N, "div")
+    elif N.type == "nod_modulo":
+        binary_operation(N, "mod")
+    else:
+        raise Exception("Error: unknown node type", N.type)
   
 # ---------------------------- degub ----------------------------
             
