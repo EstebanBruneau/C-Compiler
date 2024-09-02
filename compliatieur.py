@@ -282,8 +282,8 @@ def analex(code):
     line_counter = 1
     
     # print("Analex done")
-    for token in list_tokens:
-        print(token)
+    # for token in list_tokens:
+    #     print(token)
     return list_tokens
 
 def anasem(N):
@@ -445,7 +445,12 @@ print(".start")
 analex(code)
 
 
-while T is not None and T.type != "tok_eof":
+while (1):
+    if T is not None:
+        if T.type == "tok_eof":
+            break
+    if T is None:
+        next()
     
     N = anasynth()
     
