@@ -282,6 +282,8 @@ def analex(code):
     line_counter = 1
     
     # print("Analex done")
+    for token in list_tokens:
+        print(token)
     return list_tokens
 
 def anasem(N):
@@ -334,7 +336,7 @@ operators = {
     "tok_less_equal": (5, 1, "nod_less_equal"),
     "tok_double_equal": (4, 1, "nod_double_equal"),
     "tok_different": (4, "nod_different"),
-    "tok_and": (3, 1, "nod_and"),
+    "tok_and": (2, 1, "nod_and"),
     "tok_or": (2, 1, "nod_or"),
     "tok_assign": (1, 0, "nod_assign")
 }
@@ -409,6 +411,22 @@ def gencode(N):
         binary_operation(N, "div")
     elif N.type == "nod_modulo":
         binary_operation(N, "mod")
+    elif N.type == "nod_greater":
+        binary_operation(N, "cmpgt")
+    elif N.type == "nod_less":
+        binary_operation(N, "cmplt")
+    elif N.type == "nod_greater_equal":
+        binary_operation(N, "cmpge")
+    elif N.type == "nod_less_equal":
+        binary_operation(N, "cmple")
+    elif N.type == "nod_double_equal":
+        binary_operation(N, "cmpeq")
+    elif N.type == "nod_different":
+        binary_operation(N, "cmpne")
+    elif N.type == "nod_and":
+        binary_operation(N, "and")
+    elif N.type == "nod_or":
+        binary_operation(N, "or")
     else:
         raise Exception("Error: unknown node type", N.type)
   
