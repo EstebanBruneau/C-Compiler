@@ -1,17 +1,5 @@
 
 
-code_line = open("code.c", 'r').read().split("\n")
-code = ""
-for line in code_line:
-    for c in line:
-        code += c
-    code += "\\n"
-
-line_counter = 1
-character_counter = 0
-T = None
-L = None
-
 class Token:
     def __init__(self, value, t_type, line):
         self.type = t_type
@@ -32,7 +20,49 @@ class Node:
         
     def __str__(self):
         return "Node: " + self.type + " " + str(self.value) + " " + str(self.children)
-                
+    
+class Symbol:
+    """
+    A class to represent a symbol in a compiler.
+
+    Attributes
+    ----------
+    name : str
+        The name of the symbol.
+    type : str
+        The type of the symbol (e.g., variable, function).
+    value : any
+        The value associated with the symbol.
+
+    Methods
+    -------
+    __init__(name, type, value)
+        Initializes the Symbol with a name, type, and value.
+    
+    __str__()
+        Returns a string representation of the Symbol.
+    """
+    def __init__(self, name, type, value):
+        self.name = name
+        self.type = type
+        self.value = value 
+    def __str__(self):
+        return "Symbol: " + self.name + " " + self.type + " " + str(self.value)
+            
+            
+class Scope:
+    def __init__(self):
+        self.symbols = {}
+
+    def add_symbol(self, name, symbol):
+        self.symbols[name] = symbol
+
+    def get_symbol(self, name):
+        return self.symbols.get(name)
+
+    def __str__(self):
+        return str(self.symbols)
+            
 tok_type_list = [
     "tok_send", "tok_recieve",
     "tok_int", "tok_plus", "tok_minus", "tok_*", "tok_div", "tok_not", 
@@ -44,15 +74,10 @@ tok_type_list = [
     "tok_return", "tok_debug", "tok_eof", "tok_ident", "tok_constant"
 ]
 
-nod_type_list = [
-    "nod_eof",
-    "nod_unary_plus", "nod_binary_plus", "nod_unary_minus", "nod_binary_minus", "nod_logical_not",
-    "nod_multiplication", "nod_division", "nod_modulo"
-]
-
 def next():
     global character_counter, T, line_counter, code, L
     L = T
+    
     
     if character_counter >= len(code):
         T = Token(0, "tok_eof", line_counter)
@@ -60,23 +85,22 @@ def next():
         return
     char1 = code[character_counter]
     char2 = code[character_counter + 1] if character_counter + 1 < len(code) else ''
+    
+    
     # spaces
     if char1 == " ":
-        T = None
         character_counter += 1
-        return
+        next()
     # new line
     elif char1 == "\\":
         if char2 == "n":
-            T = None
             line_counter += 1
             character_counter += 2
-            return
+            next()
         else:
             print("Error: invalid token", char1, "at line", line_counter)
-            T = None
             character_counter += 1
-            return
+            next()
     # signs/operations
     elif char1 == "(": 
         T = Token(0 , "tok_open_parentheses", line_counter)
@@ -168,8 +192,7 @@ def next():
             T = Token(0, "tok_or", line_counter)
             character_counter += 2
         else:
-            print("Error: invalid token", char1, "at line", line_counter)
-            T = None
+            raise Exception("Error: invalid token", char1, "at line", line_counter)
             character_counter += 1
             return
     elif char1 == "&":
@@ -245,12 +268,9 @@ def next():
         return
     # unrecognized token
     else:
-        print("Error: invalid token", char1, "at line", line_counter)
-        T = None
-        character_counter += 1
-        return
+        raise Exception("Error: invalid token", char1, "at line", line_counter)
 
-    
+ 
 def check(type):
     global T
     if T is not None and T.type == type:
@@ -277,8 +297,8 @@ def analex(code):
         if T is not None:
             list_tokens.append(T)
             
-    T = list_tokens[0]
-    character_counter = 1
+    T = None
+    character_counter = 0
     line_counter = 1
     
     # print("Analex done")
@@ -359,11 +379,32 @@ def expression2(pmin):
     return Node1
 
 def instruction():
-    node = expression()
-    # print(node)
-    if node is None:
-        raise Exception("Error: expression returned None")
-    return node
+    global T, L, line_counter, character_counter
+    if check("tok_debug"):
+        N = expression()
+        accept("tok_semicolon")
+        return Node("nod_debug", "debug", [N])
+    elif check("tok_open_braces"):
+        push_scope()
+        N = Node("nod_block", "block", [])
+        print("Start block")
+        while not check("tok_close_braces"):
+            N.add_child(instruction())
+        pop_scope()
+        print("End block")
+        return N
+    if check("tok_int"):
+        accept("tok_ident")
+        symbol = Symbol(L.value, "variable", None)
+        current_scope().add_symbol(L.value, symbol)
+        N = Node("nod_declaration", L.value, [])
+        accept("tok_semicolon")
+        return N
+    else:
+        N = expression()
+        accept("tok_semicolon")
+        return Node("nod_drop", "drop", [N])
+
 
 def function():
     return instruction()
@@ -372,13 +413,22 @@ def anasynth():
     global T
     while T is not None and T.type != "tok_eof":
         # print("processing token ", T.type, T.value, "at line", T.line)
-        N = instruction()
+        N = function()
         if N is not None:
             # print(f"generated node: {N}")
             gencode(N)
         else:
             raise Exception("Error: instruction returned None")
     return Node("nod_eof", "eof", [])
+
+def push_scope():
+    var_scopes.append(Scope())
+
+def pop_scope():
+    var_scopes.pop()
+
+def current_scope():
+    return var_scopes[-1]
 
 def gencode(N):
     def binary_operation(N, operation):
@@ -427,8 +477,22 @@ def gencode(N):
         binary_operation(N, "and")
     elif N.type == "nod_or":
         binary_operation(N, "or")
+    elif N.type == "nod_block":
+        for child in N.children:
+            gencode(child)
+    elif N.type == "nod_debug":
+        gencode(N.children[0])
+        print("dbg")
+    elif N.type == "nod_drop":
+        gencode(N.children[0])
+        print("drop")
+    elif N.type == "nod_declaration":
+        print("push 0")
+        print("pop", current_scope().get_symbol(N.value).name)
     else:
         raise Exception("Error: unknown node type", N.type)
+    
+
   
 # ---------------------------- degub ----------------------------
             
@@ -438,6 +502,21 @@ def gencode(N):
     
     
 # ---------------------------- main ----------------------------
+
+code_line = open("code.c", 'r').read().split("\n")
+code = ""
+for line in code_line:
+    for c in line:
+        code += c
+    code += "\\n"
+
+line_counter = 1
+character_counter = 0
+T = None
+L = None
+
+# List of scopes, each scope is a list of symbols
+var_scopes = [Scope()]
 
 print(".start")
 
