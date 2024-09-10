@@ -1,5 +1,18 @@
 
 
+code_line = open("code.c", 'r').read().split("\n")
+code = ""
+for line in code_line:
+    for c in line:
+        code += c
+    code += "\\n"
+
+line_counter = 1
+character_counter = 0
+T = None
+L = None
+nVar = -1 # number of variables
+
 class Token:
     def __init__(self, value, t_type, line):
         self.type = t_type
@@ -10,11 +23,12 @@ class Token:
         return "Token: " + self.type + " " + str(self.value) + " " + str(self.line)
         
 class Node:
-    def __init__(self, type, value, child_list):
+    def __init__(self, type, value, children=None, position=None):
         self.type = type
         self.value = value
-        self.children = child_list
-        
+        self.children = children if children is not None else []
+        self.position = position
+
     def add_child(self, child):
         self.children.append(child)
         
@@ -193,6 +207,7 @@ def next():
             character_counter += 2
         else:
             raise Exception("Error: invalid token", char1, "at line", line_counter)
+            T = None
             character_counter += 1
             return
     elif char1 == "&":
@@ -236,7 +251,7 @@ def next():
         character_counter += 5
         return
     # types
-    elif char1 == "i" and char2 == "n" and code[character_counter + 2] == "t":
+    elif char1 == "i" and char2 == "n" and code[character_counter + 2] == "t" and not code[character_counter + 3].isalpha():
         T = Token(0, "tok_int", line_counter)
         character_counter += 3
         return
@@ -281,7 +296,7 @@ def check(type):
 def accept(type):
     global T
     if T is None:
-        raise Exception("Error: unexpected None token at line", line_counter, character_counter)
+        next()
     if T.type != type:
         raise Exception("Error: Found token", T.type, "instead of", type, "at line", T.line, character_counter)
     next()
@@ -307,7 +322,17 @@ def analex(code):
     return list_tokens
 
 def anasem(N):
-    pass
+    if N.type == "nod_decl" or N.type == "nod_ref":
+        set_n(N)
+    elif N.type == "nod_bloc":
+        begin_scope()
+        for sub_node in N.children:
+            anasem(sub_node)
+        print(variables)
+        end_scope()
+    else:
+        for child in N.children:
+            anasem(child)
 
 def Optim(N):
     return N
@@ -323,7 +348,21 @@ def atom():
         A = expression()
         accept("tok_close_parentheses")
         return A
-    raise Exception("Error: unexpected token", T.type, "at line", T.line)
+    elif check("tok_ident"):
+        name = L.value
+        if check("tok_assign"):
+            N = Node("nod_assign", name, [])
+            N.add_child(Node("nod_ref", name, []))
+            N.add_child(expression())
+            return N            
+        else:
+            return Node("nod_ident", name, [])
+    elif check("tok_eof"):
+        return Node("nod_eof", "eof", [])
+    if T is None:
+        next()
+    else:
+        raise Exception("Error: unexpected token", T.type, "at line", T.line, "character", character_counter)
             
 def suffix():
     return atom()
@@ -341,40 +380,23 @@ def prefix():
         return Node("nod_logical_not", "!", [A])
     else:
         return suffix()
-
-
-# priority, right_associative, node_type
-operators = {
-    "tok_*": (7, 1, "nod_multiplication"),
-    "tok_div": (7, 1, "nod_division"),
-    "tok_mod": (7, 1, "nod_modulo"),
-    "tok_plus": (6, 1, "nod_binary_plus"),
-    "tok_minus": (6, 1, "nod_binary_minus"),
-    "tok_greater": (5, 1, "nod_greater"),
-    "tok_less": (5, 1, "nod_less"),
-    "tok_greater_equal": (5, 1, "nod_greater_equal"),
-    "tok_less_equal": (5, 1, "nod_less_equal"),
-    "tok_double_equal": (4, 1, "nod_double_equal"),
-    "tok_different": (4, "nod_different"),
-    "tok_and": (2, 1, "nod_and"),
-    "tok_or": (2, 1, "nod_or"),
-    "tok_assign": (1, 0, "nod_assign")
-}
     
 def expression():
     return expression2(0)
 
 def expression2(pmin):
+    # print("expression2")
     Node1 = prefix()
-    while T is not None and T.type != "tok_eof":
+    while T.type != "tok_eof":
         op = operators.get(T.type)
         if op is None or op[0] < pmin:
             return Node1
         next()
         if T is None:
-            raise Exception("Error: unexpected None token after operator")
-        Node2 = expression2(op[0] + op[1]) # +1 if right associative
-        # print(f"\nNode1: {Node1}\nNode2: {Node2}")
+            raise Exception("Error: unexpected None token after operator, line ", T.line)
+        if T.type in operators:
+            raise Exception(f"Error: Invalid sequence of operators: {op[2]} followed by {T.type}, line {T.line}")
+        Node2 = expression2(op[0] + op[1])  # +1 if right associative
         Node1 = Node(op[2], op[2], [Node1, Node2])  # Use op[2] for the node type
     return Node1
 
@@ -407,7 +429,7 @@ def instruction():
 
 
 def function():
-    return instruction()
+    return bloc()
 
 def anasynth():
     global T
@@ -415,7 +437,6 @@ def anasynth():
         # print("processing token ", T.type, T.value, "at line", T.line)
         N = function()
         if N is not None:
-            # print(f"generated node: {N}")
             gencode(N)
         else:
             raise Exception("Error: instruction returned None")
@@ -437,7 +458,7 @@ def gencode(N):
         print(operation)
         
     if N is None:
-        raise Exception("Error: gencode revceived None")
+        raise Exception("Error: gencode received None")
     
     if N.type == "nod_eof":
         return
@@ -497,9 +518,11 @@ def gencode(N):
 # ---------------------------- degub ----------------------------
             
             
-# for token in analex(code):
-#     print(token.type, token.value, token.line)
-    
+for token in analex(code):
+    if token is None:
+        print("None")
+    else:
+        print(token.type, token.value, token.line)
     
 # ---------------------------- main ----------------------------
 
@@ -528,8 +551,6 @@ while (1):
     if T is not None:
         if T.type == "tok_eof":
             break
-    if T is None:
-        next()
     
     N = anasynth()
     
@@ -539,4 +560,9 @@ while (1):
     
     gencode(N)
     
-print("dbg\nhalt")
+    
+ 
+print("halt")
+
+
+
