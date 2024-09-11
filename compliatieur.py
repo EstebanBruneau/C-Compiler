@@ -385,11 +385,9 @@ def instruction():
     elif check("tok_open_braces"):
         push_scope()
         N = Node("nod_block", "block", [])
-        print("Start block")
         while not check("tok_close_braces"):
             N.add_child(instruction())
         pop_scope()
-        print("End block")
         return N
     elif check("tok_int"):
         accept("tok_ident")
@@ -403,9 +401,10 @@ def instruction():
         E = expression()
         accept("tok_close_parentheses")
         I1 = instruction()
+        I2 = None
         if check("tok_else"):
             I2 = instruction()
-        return N
+        return Node("nod_if", "if", [E, I1, I2])
     else:
         N = expression()
         accept("tok_semicolon")
@@ -487,18 +486,14 @@ def gencode(N):
         for child in N.children:
             gencode(child)
     elif N.type == "nod_if":
-        gencode(N.children[0])
-        print("jz", "else")
-        gencode(N.children[1])
-        print("else:")
-        if len(N.children) == 3:
+        gencode(N.children[0])  
+        print("jz else")  
+        gencode(N.children[1]) 
+        print("jmp endif")  
+        if N.children[2] is not None:
+            print("else:") 
             gencode(N.children[2])
-    elif N.type == "nod_assign":
-        gencode(N.children[1])
-        print("pop", current_scope().get_symbol(N.children[0].value).name)
-    elif N.type == "nod_return":
-        gencode(N.children[0])
-        print("ret")
+        print("endif:")  
     elif N.type == "nod_while":
         print("start_while:")
         gencode(N.children[0])
@@ -510,6 +505,9 @@ def gencode(N):
         print("jmp", "end_while")
     elif N.type == "nod_continue":
         print("jmp", "start_while")
+    elif N.type == "nod_declaration":
+        symbol = Symbol(N.value, "variable", None)
+        current_scope().add_symbol(N.value, symbol)
     elif N.type == "nod_send":
         gencode(N.children[0])
         print("send")
@@ -517,13 +515,11 @@ def gencode(N):
         print("recieve")
     elif N.type == "nod_drop":
         gencode(N.children[0])
-        print("drop")
-    elif N.type == "nod_debug":
-        gencode(N.children[0])
-        print("dbg")
-    elif N.type == "nod_declaration":
-        print("push 0")
-        print("pop", current_scope().get_symbol(N.value).name)
+        symbol = current_scope().get_symbol(N.value)
+        if symbol is not None:
+            print("pop", symbol.name)
+        else:
+            raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
     else:
         raise Exception("Error: unknown node type", N.type)
     
