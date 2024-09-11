@@ -1,5 +1,3 @@
-
-
 class Token:
     def __init__(self, value, t_type, line):
         self.type = t_type
@@ -393,12 +391,20 @@ def instruction():
         pop_scope()
         print("End block")
         return N
-    if check("tok_int"):
+    elif check("tok_int"):
         accept("tok_ident")
         symbol = Symbol(L.value, "variable", None)
         current_scope().add_symbol(L.value, symbol)
         N = Node("nod_declaration", L.value, [])
         accept("tok_semicolon")
+        return N
+    elif check("tok_if"):
+        accept("tok_open_parentheses")
+        E = expression()
+        accept("tok_close_parentheses")
+        I1 = instruction()
+        if check("tok_else"):
+            I2 = instruction()
         return N
     else:
         N = expression()
@@ -480,12 +486,41 @@ def gencode(N):
     elif N.type == "nod_block":
         for child in N.children:
             gencode(child)
-    elif N.type == "nod_debug":
+    elif N.type == "nod_if":
         gencode(N.children[0])
-        print("dbg")
+        print("jz", "else")
+        gencode(N.children[1])
+        print("else:")
+        if len(N.children) == 3:
+            gencode(N.children[2])
+    elif N.type == "nod_assign":
+        gencode(N.children[1])
+        print("pop", current_scope().get_symbol(N.children[0].value).name)
+    elif N.type == "nod_return":
+        gencode(N.children[0])
+        print("ret")
+    elif N.type == "nod_while":
+        print("start_while:")
+        gencode(N.children[0])
+        print("jz", "end_while")
+        gencode(N.children[1])
+        print("jmp", "start_while")
+        print("end_while:")
+    elif N.type == "nod_break":
+        print("jmp", "end_while")
+    elif N.type == "nod_continue":
+        print("jmp", "start_while")
+    elif N.type == "nod_send":
+        gencode(N.children[0])
+        print("send")
+    elif N.type == "nod_recieve":
+        print("recieve")
     elif N.type == "nod_drop":
         gencode(N.children[0])
         print("drop")
+    elif N.type == "nod_debug":
+        gencode(N.children[0])
+        print("dbg")
     elif N.type == "nod_declaration":
         print("push 0")
         print("pop", current_scope().get_symbol(N.value).name)
