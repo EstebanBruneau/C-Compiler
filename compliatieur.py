@@ -454,7 +454,7 @@ def generate_label():
 
 def gencode(N):
     def binary_operation(N, operation):
-        gencode(N.children[0])
+        gencode(N.children[0]) 
         gencode(N.children[1])
         print(operation)
 
