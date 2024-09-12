@@ -8,16 +8,16 @@ class Token:
         return "Token: " + self.type + " " + str(self.value) + " " + str(self.line)
         
 class Node:
-    def __init__(self, type, value, child_list):
+    def __init__(self, type, value, children):
         self.type = type
         self.value = value
-        self.children = child_list
-        
+        self.children = children
+
     def add_child(self, child):
         self.children.append(child)
         
     def __str__(self):
-        return "Node: " + self.type + " " + str(self.value) + " " + str(self.children)
+        return f"Node(type={self.type}, value={self.value}, children={self.children})"
     
 class Symbol:
     """
@@ -373,7 +373,7 @@ def expression2(pmin):
             raise Exception("Error: unexpected None token after operator")
         Node2 = expression2(op[0] + op[1]) # +1 if right associative
         # print(f"\nNode1: {Node1}\nNode2: {Node2}")
-        Node1 = Node(op[2], op[2], [Node1, Node2])  # Use op[2] for the node type
+        Node1 = Node(op[2], op[2], [Node1, Node2])
     return Node1
 
 def instruction():
@@ -393,18 +393,28 @@ def instruction():
         accept("tok_ident")
         symbol = Symbol(L.value, "variable", None)
         current_scope().add_symbol(L.value, symbol)
+        print("Added symbol", L.value, "to the current scope, which is", current_scope())
         N = Node("nod_declaration", L.value, [])
+        accept("tok_semicolon")
+        return N
+    elif check("tok_ident"):
+        symbol = current_scope().get_symbol(L.value)
+        if symbol is None:
+            raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
+        N = Node("nod_assign", "assign", [Node("nod_ident", L.value, [])])
+        accept("tok_assign")
+        N.add_child(expression())
         accept("tok_semicolon")
         return N
     elif check("tok_if"):
         accept("tok_open_parentheses")
-        E = expression()
+        condition = expression()
         accept("tok_close_parentheses")
-        I1 = instruction()
-        I2 = None
+        then_instr = instruction()
         if check("tok_else"):
-            I2 = instruction()
-        return Node("nod_if", "if", [E, I1, I2])
+            else_instr = instruction()
+            return Node("nod_if_else", "if_else", [condition, then_instr, else_instr])
+        return Node("nod_if", "if", [condition, then_instr])
     else:
         N = expression()
         accept("tok_semicolon")
@@ -420,7 +430,7 @@ def anasynth():
         # print("processing token ", T.type, T.value, "at line", T.line)
         N = function()
         if N is not None:
-            # print(f"generated node: {N}")
+            print(f"generated node: {N}")
             gencode(N)
         else:
             raise Exception("Error: instruction returned None")
@@ -435,37 +445,50 @@ def pop_scope():
 def current_scope():
     return var_scopes[-1]
 
+def generate_label():
+    global label_counter
+    label = f"l{label_counter}"
+    label_counter += 1
+    return label
+
+
 def gencode(N):
     def binary_operation(N, operation):
         gencode(N.children[0])
         gencode(N.children[1])
         print(operation)
-        
+
     if N is None:
-        raise Exception("Error: gencode revceived None")
-    
+        raise Exception("Error: gencode received None")
+
+    # Base Cases
     if N.type == "nod_eof":
         return
-    # print(f"Generating code for node {N}")
-    if N.type == "nod_constant":
-        print("push", N.value)
+    elif N.type == "nod_constant":
+        print(f"push {N.value}")
+
+    # Unary Operations
     elif N.type == "nod_unary_minus":
         print("push 0")
         gencode(N.children[0])
         print("sub")
+    elif N.type == "nod_logical_not":
+        gencode(N.children[0])
+        print("not")
+
+    # Binary Operations
     elif N.type == "nod_binary_plus":
         binary_operation(N, "add")
     elif N.type == "nod_binary_minus":
         binary_operation(N, "sub")
-    elif N.type == "nod_logical_not":
-        gencode(N.children[0])
-        print("not")
     elif N.type == "nod_multiplication":
         binary_operation(N, "mul")
     elif N.type == "nod_division":
         binary_operation(N, "div")
     elif N.type == "nod_modulo":
         binary_operation(N, "mod")
+
+    # Comparison Operations
     elif N.type == "nod_greater":
         binary_operation(N, "cmpgt")
     elif N.type == "nod_less":
@@ -478,22 +501,36 @@ def gencode(N):
         binary_operation(N, "cmpeq")
     elif N.type == "nod_different":
         binary_operation(N, "cmpne")
+
+    # Logical Operations
     elif N.type == "nod_and":
         binary_operation(N, "and")
     elif N.type == "nod_or":
         binary_operation(N, "or")
+
+    # Control Flow
     elif N.type == "nod_block":
         for child in N.children:
             gencode(child)
     elif N.type == "nod_if":
-        gencode(N.children[0])  
-        print("jz else")  
-        gencode(N.children[1]) 
-        print("jmp endif")  
-        if N.children[2] is not None:
-            print("else:") 
-            gencode(N.children[2])
-        print("endif:")  
+        label_else = generate_label()
+        label_end = generate_label()
+        gencode(N.children[0])
+        print("jz", label_else)
+        gencode(N.children[1])
+        print("jmp", label_end)
+        print(label_else + ":")
+        print(label_end + ":")
+    elif N.type == "nod_if_else":
+        label_else = generate_label()
+        label_end = generate_label()
+        gencode(N.children[0])
+        print("jz", label_else)
+        gencode(N.children[1])
+        print("jmp", label_end)
+        print(label_else + ":")
+        gencode(N.children[2])
+        print(label_end + ":")
     elif N.type == "nod_while":
         print("start_while:")
         gencode(N.children[0])
@@ -505,21 +542,30 @@ def gencode(N):
         print("jmp", "end_while")
     elif N.type == "nod_continue":
         print("jmp", "start_while")
-    elif N.type == "nod_declaration":
-        symbol = Symbol(N.value, "variable", None)
-        current_scope().add_symbol(N.value, symbol)
+
+    # Special Operations
     elif N.type == "nod_send":
         gencode(N.children[0])
         print("send")
-    elif N.type == "nod_recieve":
-        print("recieve")
+    elif N.type == "nod_receive":
+        print("receive")
     elif N.type == "nod_drop":
-        gencode(N.children[0])
+        print("drop")
+
+    # Variable Handling
+    elif N.type == "nod_declaration":
+        symbol = Symbol(N.value, "variable", None)
+        current_scope().add_symbol(N.value, symbol)
+    elif N.type == "nod_ident":
         symbol = current_scope().get_symbol(N.value)
-        if symbol is not None:
-            print("pop", symbol.name)
-        else:
+        if symbol is None:
             raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
+        print(f"load {symbol.name}")
+    elif N.type == "nod_assign":
+        gencode(N.children[0])
+        gencode(N.children[1])
+        print("store")
+
     else:
         raise Exception("Error: unknown node type", N.type)
     
@@ -545,6 +591,7 @@ line_counter = 1
 character_counter = 0
 T = None
 L = None
+label_counter = 0
 
 # List of scopes, each scope is a list of symbols
 var_scopes = [Scope()]
@@ -567,6 +614,7 @@ while (1):
     anasem(N)
      
     N = Optim(N)
+    
     
     gencode(N)
     
