@@ -60,17 +60,6 @@ class Scope:
 
     def __str__(self):
         return str(self.symbols)
-            
-tok_type_list = [
-    "tok_send", "tok_recieve",
-    "tok_int", "tok_plus", "tok_minus", "tok_*", "tok_div", "tok_not", 
-    "tok_and", "tok_or", "tok_double_equal", "tok_different", "tok_greater",
-    "tok_less", "tok_greater_equal", "tok_less_equal", "tok_assign",
-    "tok_semicolon", "tok_comma", "tok_open_parentheses", "tok_close_parentheses",
-    "tok_open_brackets", "tok_close_brackets", "tok_open_braces", "tok_close_braces",
-    "tok_mod", "tok_&", "tok_if", "tok_else", "tok_while", "tok_do", "tok_break", "tok_continue", 
-    "tok_return", "tok_debug", "tok_eof", "tok_ident", "tok_constant"
-]
 
 def next():
     global character_counter, T, line_counter, code, L
@@ -267,7 +256,6 @@ def next():
     # unrecognized token
     else:
         raise Exception("Error: invalid token", char1, "at line", line_counter)
-
  
 def check(type):
     global T
@@ -321,6 +309,14 @@ def atom():
         A = expression()
         accept("tok_close_parentheses")
         return A
+    
+    elif check("tok_ident"):
+        symbol = current_scope().get_symbol(L.value)
+        if symbol is None:
+            print("Scope:", current_scope())
+            raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
+        return Node("nod_ident", L.value, [])
+    
     raise Exception("Error: unexpected token", T.type, "at line", T.line)
             
 def suffix():
@@ -372,16 +368,19 @@ def expression2(pmin):
         if T is None:
             raise Exception("Error: unexpected None token after operator")
         Node2 = expression2(op[0] + op[1]) # +1 if right associative
-        # print(f"\nNode1: {Node1}\nNode2: {Node2}")
         Node1 = Node(op[2], op[2], [Node1, Node2])
     return Node1
 
 def instruction():
     global T, L, line_counter, character_counter
+
+    # Debug Statement
     if check("tok_debug"):
         N = expression()
         accept("tok_semicolon")
         return Node("nod_debug", "debug", [N])
+
+    # Block Statement
     elif check("tok_open_braces"):
         push_scope()
         N = Node("nod_block", "block", [])
@@ -389,6 +388,8 @@ def instruction():
             N.add_child(instruction())
         pop_scope()
         return N
+
+    # Variable Declaration
     elif check("tok_int"):
         accept("tok_ident")
         symbol = Symbol(L.value, "variable", None)
@@ -397,6 +398,8 @@ def instruction():
         N = Node("nod_declaration", L.value, [])
         accept("tok_semicolon")
         return N
+
+    # Assignment Statement
     elif check("tok_ident"):
         symbol = current_scope().get_symbol(L.value)
         if symbol is None:
@@ -406,15 +409,34 @@ def instruction():
         N.add_child(expression())
         accept("tok_semicolon")
         return N
+
+    # Conditional Statement
     elif check("tok_if"):
+        print("if statement")
         accept("tok_open_parentheses")
         condition = expression()
+        print("condition:", condition)
         accept("tok_close_parentheses")
+        print("if instruction")
         then_instr = instruction()
+        print("then instruction:", then_instr)
         if check("tok_else"):
             else_instr = instruction()
             return Node("nod_if_else", "if_else", [condition, then_instr, else_instr])
         return Node("nod_if", "if", [condition, then_instr])
+    
+    # While Loop
+    elif check("tok_while"):
+        print("while loop")
+        accept("tok_open_parentheses")
+        condition = expression()
+        print("condition:", condition)
+        accept("tok_close_parentheses")
+        print("while instruction")
+        body_instr = instruction()
+        return Node("nod_while", "while", [condition, body_instr])
+
+    # Expression Handling
     else:
         N = expression()
         accept("tok_semicolon")
@@ -427,10 +449,8 @@ def function():
 def anasynth():
     global T
     while T is not None and T.type != "tok_eof":
-        # print("processing token ", T.type, T.value, "at line", T.line)
         N = function()
         if N is not None:
-            print(f"generated node: {N}")
             gencode(N)
         else:
             raise Exception("Error: instruction returned None")
@@ -450,7 +470,6 @@ def generate_label():
     label = f"l{label_counter}"
     label_counter += 1
     return label
-
 
 def gencode(N):
     def binary_operation(N, operation):
@@ -532,12 +551,14 @@ def gencode(N):
         gencode(N.children[2])
         print(label_end + ":")
     elif N.type == "nod_while":
-        print("start_while:")
+        label_start = generate_label()
+        label_end = generate_label()
+        print(label_start + ":")
         gencode(N.children[0])
-        print("jz", "end_while")
+        print("jz", label_end)
         gencode(N.children[1])
-        print("jmp", "start_while")
-        print("end_while:")
+        print("jmp", label_start)
+        print(label_end + ":")
     elif N.type == "nod_break":
         print("jmp", "end_while")
     elif N.type == "nod_continue":
