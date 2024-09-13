@@ -40,10 +40,12 @@ class Symbol:
     __str__()
         Returns a string representation of the Symbol.
     """
-    def __init__(self, name, type, value):
+    def __init__(self, name, type, adress, value):
         self.name = name
         self.type = type
+        self.adress = adress
         self.value = value 
+        
     def __str__(self):
         return "Symbol: " + self.name + " " + self.type + " " + str(self.value)
             
@@ -372,7 +374,7 @@ def expression2(pmin):
     return Node1
 
 def instruction():
-    global T, L, line_counter, character_counter
+    global T, L, line_counter, character_counter, nbVar
 
     # Debug Statement
     if check("tok_debug"):
@@ -392,10 +394,10 @@ def instruction():
     # Variable Declaration
     elif check("tok_int"):
         accept("tok_ident")
-        symbol = Symbol(L.value, "variable", None)
+        symbol = Symbol(L.value, "variable", nbVar, None)
         current_scope().add_symbol(L.value, symbol)
-        print("Added symbol", L.value, "to the current scope, which is", current_scope())
         N = Node("nod_declaration", L.value, [])
+        nbVar += 1
         accept("tok_semicolon")
         return N
 
@@ -404,7 +406,8 @@ def instruction():
         symbol = current_scope().get_symbol(L.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
-        N = Node("nod_assign", "assign", [Node("nod_ident", L.value, [])])
+        N = Node("nod_assign", L.value, [])
+        N.add_child(Node("nod_ident", L.value, []))
         accept("tok_assign")
         N.add_child(expression())
         accept("tok_semicolon")
@@ -427,14 +430,15 @@ def instruction():
     
     # While Loop
     elif check("tok_while"):
-        print("while loop")
+        print("while statement")
         accept("tok_open_parentheses")
         condition = expression()
         print("condition:", condition)
         accept("tok_close_parentheses")
         print("while instruction")
-        body_instr = instruction()
-        return Node("nod_while", "while", [condition, body_instr])
+        loop_instr = instruction()
+        print("loop instruction:", loop_instr)
+        return Node("nod_while", "while", [condition, loop_instr])
 
     # Expression Handling
     else:
@@ -457,10 +461,14 @@ def anasynth():
     return Node("nod_eof", "eof", [])
 
 def push_scope():
+    global nbVar
     var_scopes.append(Scope())
-
+    nbVar = 0
+        
 def pop_scope():
+    global nbVar
     var_scopes.pop()
+    nbVar = 0
 
 def current_scope():
     return var_scopes[-1]
@@ -575,13 +583,13 @@ def gencode(N):
 
     # Variable Handling
     elif N.type == "nod_declaration":
-        symbol = Symbol(N.value, "variable", None)
+        symbol = Symbol(N.value, "variable", nbVar, None)
         current_scope().add_symbol(N.value, symbol)
     elif N.type == "nod_ident":
         symbol = current_scope().get_symbol(N.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
-        print(f"load {symbol.name}")
+        print(f"load {symbol.adress} ({N.value})")
     elif N.type == "nod_assign":
         gencode(N.children[0])
         gencode(N.children[1])
@@ -613,6 +621,7 @@ character_counter = 0
 T = None
 L = None
 label_counter = 0
+nbVar = 0
 
 # List of scopes, each scope is a list of symbols
 var_scopes = [Scope()]
