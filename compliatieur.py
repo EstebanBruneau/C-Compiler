@@ -8,13 +8,17 @@ class Token:
         return "Token: " + self.type + " " + str(self.value) + " " + str(self.line)
         
 class Node:
-    def __init__(self, type, value, children):
+    def __init__(self, type, value, children, nbVar = 0):
         self.type = type
         self.value = value
         self.children = children
+        self.nbVar = nbVar
 
     def add_child(self, child):
         self.children.append(child)
+        
+    def count_children(self):
+        return len(self.children)
         
     def __str__(self):
         return f"Node(type={self.type}, value={self.value}, children={self.children})"
@@ -67,14 +71,12 @@ def next():
     global character_counter, T, line_counter, code, L
     L = T
     
-    
     if character_counter >= len(code):
         T = Token(0, "tok_eof", line_counter)
         character_counter += 1
         return
     char1 = code[character_counter]
     char2 = code[character_counter + 1] if character_counter + 1 < len(code) else ''
-    
     
     # spaces
     if char1 == " ":
@@ -295,7 +297,7 @@ def analex(code):
     return list_tokens
 
 def anasem(N):
-    pass
+    return N
 
 def Optim(N):
     return N
@@ -322,7 +324,17 @@ def atom():
     raise Exception("Error: unexpected token", T.type, "at line", T.line)
             
 def suffix():
-    return atom()
+    global T, L
+    
+    R = atom()
+    if check("tok_open_parentheses"):
+        R = Node("nod_call", "call", [R])
+        while not check("tok_close_parentheses"):
+            R.add_child(expression())
+            if not check("tok_comma"):
+                break
+    return R
+    
 
 def prefix():
     global T, L
@@ -384,17 +396,17 @@ def instruction():
 
     # Block Statement
     elif check("tok_open_braces"):
-        push_scope()
+        # push_scope()
         N = Node("nod_block", "block", [])
         while not check("tok_close_braces"):
             N.add_child(instruction())
-        pop_scope()
+        # pop_scope()
         return N
 
     # Variable Declaration
     elif check("tok_int"):
         accept("tok_ident")
-        symbol = Symbol(L.value, "variable", nbVar, None)
+        symbol = Symbol(L.value, "type_variable", nbVar, None)
         current_scope().add_symbol(L.value, symbol)
         N = Node("nod_declaration", L.value, [])
         nbVar += 1
@@ -449,11 +461,30 @@ def instruction():
 
 def function():
     return instruction()
+    
 
+    if check("tok_int"):
+        accept("tok_ident")
+        S = Symbol(L.value, "type_function", None, None)
+        push_scope()
+        for child in N.children:
+            anasem(child)
+        pop_scope()
+        N.nbVar = nbVar - (N.count_children()-1)
+        return N
+    
+    if check("tok_ident"):
+        S = Symbol(L.value, "type_function", None, None)
+        if S.type != "type_function":
+            raise Exception("Error: symbol is not a function")
+        for i in range(1, len(N.children)):
+            anasem(N.children[i])
+        return N
+       
 def anasynth():
     global T
     while T is not None and T.type != "tok_eof":
-        N = function()
+        N = instruction()
         if N is not None:
             gencode(N)
         else:
@@ -583,7 +614,7 @@ def gencode(N):
 
     # Variable Handling
     elif N.type == "nod_declaration":
-        symbol = Symbol(N.value, "variable", nbVar, None)
+        symbol = Symbol(N.value, "type_variable", nbVar, None)
         current_scope().add_symbol(N.value, symbol)
     elif N.type == "nod_ident":
         symbol = current_scope().get_symbol(N.value)
@@ -626,18 +657,22 @@ nbVar = 0
 # List of scopes, each scope is a list of symbols
 var_scopes = [Scope()]
 
-print(".start")
 
+
+
+print(".start")
+print("prep main")
+print("call 0")
+print("halt")
 
 analex(code)
 
-
+push_scope()
+next()
 while (1):
     if T is not None:
         if T.type == "tok_eof":
             break
-    if T is None:
-        next()
     
     N = anasynth()
     
@@ -645,7 +680,8 @@ while (1):
      
     N = Optim(N)
     
-    
     gencode(N)
     
-print("dbg\nhalt")
+print("dbg")
+
+pop_scope()
