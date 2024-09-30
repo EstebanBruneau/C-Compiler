@@ -296,8 +296,18 @@ def analex(code):
     #     print(token)
     return list_tokens
 
+def semantic_analysis(ast):
+    for node in ast:
+        anasem(node)
+
 def anasem(N):
-    return N
+    if N.type == "nod_ident":
+        symbol = find_symbol(N.value)
+        if symbol is None:
+            raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
+    
+    for child in N.children:
+        anasem(child)
 
 def Optim(N):
     return N
@@ -315,7 +325,7 @@ def atom():
         return A
     
     elif check("tok_ident"):
-        symbol = current_scope().get_symbol(L.value)
+        symbol = find_symbol(L.value)
         if symbol is None:
             print("Scope:", current_scope())
             raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
@@ -333,8 +343,7 @@ def suffix():
             R.add_child(expression())
             if not check("tok_comma"):
                 break
-    return R
-    
+    return R   
 
 def prefix():
     global T, L
@@ -347,9 +356,14 @@ def prefix():
     elif check("tok_not"):
         A = prefix()
         return Node("nod_logical_not", "!", [A])
+    elif check("tok_&"):
+        A = prefix()
+        return Node("nod_address", "&", [A])
+    elif check("tok_*"):
+        A = prefix()
+        return Node("nod_dereference", "*", [A])
     else:
         return suffix()
-
 
 # priority, right_associative, node_type
 operators = {
@@ -403,19 +417,35 @@ def instruction():
         # pop_scope()
         return N
 
-    # Variable Declaration
+   # Variable Declaration
     elif check("tok_int"):
+        pointer_level = 0
+        while check("tok_*"):
+            pointer_level += 1
+            
         accept("tok_ident")
-        symbol = Symbol(L.value, "type_variable", nbVar, None)
+        var_type = "int" + "*" * pointer_level
+        symbol = Symbol(L.value, var_type, nbVar, None)
         current_scope().add_symbol(L.value, symbol)
         N = Node("nod_declaration", L.value, [])
         nbVar += 1
         accept("tok_semicolon")
         return N
-
+    
     # Assignment Statement
     elif check("tok_ident"):
-        symbol = current_scope().get_symbol(L.value)
+        symbol = find_symbol(L.value)
+        if symbol is None:
+            raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
+        N = Node("nod_assign", L.value, [])
+        N.add_child(Node("nod_ident", L.value, []))
+        accept("tok_assign")
+        N.add_child(expression())
+        accept("tok_semicolon")
+        return N
+    elif check("tok_*"):
+        accept("tok_ident")
+        symbol = find_symbol(L.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
         N = Node("nod_assign", L.value, [])
@@ -452,63 +482,123 @@ def instruction():
         print("loop instruction:", loop_instr)
         return Node("nod_while", "while", [condition, loop_instr])
 
+    # Break Statement
+    elif check("tok_break"):
+        accept("tok_semicolon")
+        return Node("nod_break", "break", [])
+    
+    # return statement
+    elif check("tok_return"):
+        N = expression()
+        accept("tok_semicolon")
+        return Node("nod_return", "return", [N])
+    
     # Expression Handling
     else:
         N = expression()
         accept("tok_semicolon")
         return Node("nod_drop", "drop", [N])
 
+def function():    
+    global T, L, line_counter, character_counter, nbVar, funcMode
 
-def function():
-    return instruction()
-    
-
+    # Function Declaration
     if check("tok_int"):
         accept("tok_ident")
         S = Symbol(L.value, "type_function", None, None)
         push_scope()
+        N = Node("nod_function", L.value, [])
+        accept("tok_open_parentheses")
+        while not check("tok_close_parentheses"):
+            accept("tok_int")
+            accept("tok_ident")
+            symbol = Symbol(L.value, "type_variable", nbVar, None)
+            current_scope().add_symbol(L.value, symbol)
+            # print("Adding parameter to scope : ", L.value)
+            if not check("tok_comma"):
+                accept("tok_close_parentheses")
+                break
         for child in N.children:
             anasem(child)
-        pop_scope()
+        # pop_scope()   # PROF
         N.nbVar = nbVar - (N.count_children()-1)
+        funcMode = False  
         return N
-    
+
+    # Function Call
     if check("tok_ident"):
-        S = Symbol(L.value, "type_function", None, None)
-        if S.type != "type_function":
-            raise Exception("Error: symbol is not a function")
-        for i in range(1, len(N.children)):
-            anasem(N.children[i])
-        return N
-       
+        func_name = L.value
+        accept("tok_ident")
+        accept("tok_open_parentheses")
+        call_node = Node("nod_call", func_name, [])
+        while not check("tok_close_parentheses"):
+            call_node.add_child(expression())
+            if not check("tok_comma"):
+                break
+        accept("tok_close_parentheses")
+        return call_node
+                    
 def anasynth():
-    global T
+    global T, L, line_counter, character_counter, nbVar, funcMode
+    ast = []
     while T is not None and T.type != "tok_eof":
-        N = instruction()
-        if N is not None:
-            gencode(N)
+        if funcMode:
+            N = function()
         else:
-            raise Exception("Error: instruction returned None")
-    return Node("nod_eof", "eof", [])
+            N = instruction()
+        if N is not None:
+            ast.append(N)
+        else:
+            raise Exception("Error: Node from instruction/function is None")
+    # for node in ast:
+    #     print(node)
+    return ast
 
 def push_scope():
-    global nbVar
+    # print("pushing scope : ")
+    global nbVar, var_scopes
     var_scopes.append(Scope())
     nbVar = 0
+    # print_scopes()
+    # print("scope pushed")
         
 def pop_scope():
-    global nbVar
+    # print("popping scope : ")
+    global nbVar, var_scopes
     var_scopes.pop()
     nbVar = 0
-
+    # print_scopes()
+    # print("scope popped")
+    
 def current_scope():
     return var_scopes[-1]
+
+def print_scopes():
+    for scope in var_scopes:
+        print(scope)
 
 def generate_label():
     global label_counter
     label = f"l{label_counter}"
     label_counter += 1
     return label
+
+def find_symbol(name):
+    """
+    Searches for a symbol by name in the current scope stack. If the symbol is not found in the current scope,
+    the search continues to the parent scopes.
+
+    Args:
+        name (str): The name of the symbol to search for.
+
+    Returns:
+        Optional[Symbol]: The symbol if found, otherwise None.
+    """
+    for scope in reversed(var_scopes):
+        symbol = scope.get_symbol(name)
+        if symbol is not None:
+            return symbol
+    return None
 
 def gencode(N):
     def binary_operation(N, operation):
@@ -617,7 +707,7 @@ def gencode(N):
         symbol = Symbol(N.value, "type_variable", nbVar, None)
         current_scope().add_symbol(N.value, symbol)
     elif N.type == "nod_ident":
-        symbol = current_scope().get_symbol(N.value)
+        symbol = find_symbol(N.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
         print(f"load {symbol.adress} ({N.value})")
@@ -626,9 +716,18 @@ def gencode(N):
         gencode(N.children[1])
         print("store")
 
+    # Function Handling
+    elif N.type == "nod_function":
+        print(f"{N.value}:")
+        for i in range(1, len(N.children)):
+            gencode(N.children[i])
+    elif N.type == "nod_return":
+        gencode(N.children[0])
+        print("ret")
+    
+    
     else:
         raise Exception("Error: unknown node type", N.type)
-    
 
   
 # ---------------------------- degub ----------------------------
@@ -639,6 +738,9 @@ def gencode(N):
     
     
 # ---------------------------- main ----------------------------
+
+funcMode = True
+
 
 code_line = open("code.c", 'r').read().split("\n")
 code = ""
@@ -659,29 +761,18 @@ var_scopes = [Scope()]
 
 
 
-
 print(".start")
 print("prep main")
 print("call 0")
-print("halt")
+# print("halt") #?
 
-analex(code)
-
-push_scope()
+tokens = analex(code)
 next()
-while (1):
-    if T is not None:
-        if T.type == "tok_eof":
-            break
-    
-    N = anasynth()
-    
-    anasem(N)
-     
-    N = Optim(N)
-    
-    gencode(N)
-    
+push_scope()
+ast = anasynth()
+semantic_analysis(ast)
+for node in ast:
+    node = Optim(node)
+    gencode(node)
 print("dbg")
-
 pop_scope()

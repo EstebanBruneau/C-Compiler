@@ -1,7 +1,9 @@
-if(1==1){
-    int a;
-    a=1;
-}else{
-    int b;
-    b=2;
+
+int main(int b){
+
+    int *a;
+    *a = 10;
+
+
+    return 0;
 }
