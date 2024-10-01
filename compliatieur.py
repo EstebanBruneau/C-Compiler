@@ -659,7 +659,7 @@ def gencode(N):
     def binary_operation(N, operation):
         gencode(N.children[0]) 
         gencode(N.children[1])
-        print(operation)
+        print(f"{operation}")
 
     if N is None:
         raise Exception("Error: gencode received None")
@@ -719,87 +719,89 @@ def gencode(N):
         label_else = generate_label()
         label_end = generate_label()
         gencode(N.children[0])
-        print("jz", label_else)
+        print(f"jumpf {label_else}")
         gencode(N.children[1])
-        print("jmp", label_end)
-        print(label_else + ":")
-        print(label_end + ":")
+        print(f"jump {label_end}")
+        print(f"{label_else}:")
+        print(f"{label_end}:")
     elif N.type == "nod_if_else":
         label_else = generate_label()
         label_end = generate_label()
         gencode(N.children[0])
-        print("jz", label_else)
+        print(f"jumpf {label_else}")
         gencode(N.children[1])
-        print("jmp", label_end)
-        print(label_else + ":")
+        print(f"jump {label_end}")
+        print(f"{label_else}:")
         gencode(N.children[2])
-        print(label_end + ":")
+        print(f"{label_end}:")
     elif N.type == "nod_while":
         label_start = generate_label()
         label_end = generate_label()
-        print(label_start + ":")
+        print(f"{label_start}:")
         gencode(N.children[0])
-        print("jz", label_end)
+        print(f"jumpf {label_end}")
         gencode(N.children[1])
-        print("jmp", label_start)
-        print(label_end + ":")
+        print(f"jump {label_start}")
+        print(f"{label_end}:")
     elif N.type == "nod_for":
         gencode(N.children[0])
         label_start = generate_label()
         label_end = generate_label()
-        print(label_start + ":")
+        print(f"{label_start}:")
         gencode(N.children[1])
-        print("jz", label_end)
+        print(f"jumpf {label_end}")
         gencode(N.children[3])
         gencode(N.children[2])
-        print("jmp", label_start)
-        print(label_end + ":")
+        print(f"jump {label_start}")
+        print(f"{label_end}:")
     elif N.type == "nod_break":
-        print("jmp", "end_while")
+        print("jump end_while")
     elif N.type == "nod_continue":
-        print("jmp", "start_while")
+        print("jump start_while")
 
     # Special Operations
     elif N.type == "nod_send":
         gencode(N.children[0])
         print("send")
     elif N.type == "nod_receive":
-        print("receive")
+        print("recv")
     elif N.type == "nod_drop":
-        print("drop")
+        print("drop 1")
 
     # Variable Handling
     elif N.type == "nod_declaration":
         symbol = Symbol(N.value, "type_variable", nbVar, None)
         current_scope().add_symbol(N.value, symbol)
+        print(f"resn 1")
     elif N.type == "nod_ident":
         symbol = find_symbol(N.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
-        print(f"load {symbol.adress} ({N.value})")
+        print(f"get {symbol.adress}")
     elif N.type == "nod_assign":
-        gencode(N.children[0])
         gencode(N.children[1])
-        print("store")
+        symbol = find_symbol(N.children[0].value)
+        if symbol is None:
+            raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
+        print(f"set {symbol.adress}")
     elif N.type == "nod_address":
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
         print(f"push {symbol.adress}")
 
-
     # Function Handling
     elif N.type == "nod_function":
-        print(f".{N.value}:")
+        print(f"{N.value}:")
         gencode(N.children[0])  # Generate code for the function body
     elif N.type == "nod_call":
+        print(f"prep {N.value}")
         for arg in reversed(N.children[1:]):  # Push arguments in reverse order
             gencode(arg)
-        print(f"call {N.value}")
+        print(f"call {len(N.children) - 1}")
     elif N.type == "nod_return":
         gencode(N.children[0])
         print("ret")
-    
     
     else:
         raise Exception("Error: unknown node type", N.type)
