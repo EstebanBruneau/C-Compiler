@@ -66,6 +66,17 @@ class Scope:
 
     def __str__(self):
         return str(self.symbols)
+    
+def display_ast(node, indent=0):
+    """Recursively display the AST nodes."""
+    if isinstance(node, list):
+        for item in node:
+            display_ast(item, indent)
+    else:
+        indent_str = ' ' * (indent * 2)
+        print(f"{indent_str}Node(type={node.type}, value={node.value}, nbVar={node.nbVar})")
+        for child in node.children:
+            display_ast(child, indent + 1)
 
 def next():
     global character_counter, T, line_counter, code, L
@@ -309,9 +320,22 @@ def anasem(N):
         symbol = find_symbol(N.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
-    
-    for child in N.children:
-        anasem(child)
+    elif N.type == "nod_function":
+        push_scope()
+        for child in N.children:
+            anasem(child)
+        pop_scope()
+    elif N.type == "nod_call":
+        function_symbol = find_symbol(N.value)
+        if function_symbol is None or function_symbol.type != "function":
+            raise Exception(f"Error: function '{N.value}' not found or is not a function")
+        if len(N.children) - 1 != len(function_symbol.value):  # -1 because the first child is the function name
+            raise Exception(f"Error: incorrect number of arguments for function '{N.value}'")
+        for child in N.children[1:]:  # Skip the first child (function name)
+            anasem(child)
+    else:
+        for child in N.children:
+            anasem(child)
 
 def Optim(N):
     return N
@@ -342,12 +366,14 @@ def suffix():
     
     R = atom()
     if check("tok_open_parentheses"):
-        R = Node("nod_call", "call", [R])
-        while not check("tok_close_parentheses"):
-            R.add_child(expression())
-            if not check("tok_comma"):
-                break
-    return R   
+        R = Node("nod_call", R.value, [R])  # Use R.value as the function name
+        if not check("tok_close_parentheses"):
+            while True:
+                R.add_child(expression())
+                if not check("tok_comma"):
+                    break
+            accept("tok_close_parentheses")
+    return R     
 
 def prefix():
     global T, L
@@ -533,58 +559,54 @@ def instruction():
         return Node("nod_drop", "drop", [N])
 
 def function():    
-    global T, L, line_counter, character_counter, nbVar, funcMode
+    global T, L, line_counter, character_counter, nbVar
 
     # Function Declaration
-    if check("tok_int"):
+    accept("tok_int")
+    accept("tok_ident")
+    function_name = L.value
+    N = Node("nod_function", function_name, [])
+    
+    accept("tok_open_parentheses")
+    params = []
+    while not check("tok_close_parentheses"):
+        accept("tok_int")
         accept("tok_ident")
-        S = Symbol(L.value, "type_function", None, None)
-        push_scope()
-        N = Node("nod_function", L.value, [])
-        accept("tok_open_parentheses")
-        while not check("tok_close_parentheses"):
-            accept("tok_int")
-            accept("tok_ident")
-            symbol = Symbol(L.value, "type_variable", nbVar, None)
-            current_scope().add_symbol(L.value, symbol)
-            # print("Adding parameter to scope : ", L.value)
-            if not check("tok_comma"):
-                accept("tok_close_parentheses")
-                break
-        for child in N.children:
-            anasem(child)
-        # pop_scope()   # PROF
-        N.nbVar = nbVar - (N.count_children()-1)
-        funcMode = False  
-        return N
+        param_name = L.value
+        params.append(param_name)
+        if not check("tok_comma"):
+            accept("tok_close_parentheses")
+            break
+    
+    # Add function to the global scope
+    global_scope = var_scopes[0]
+    global_scope.add_symbol(function_name, Symbol(function_name, "function", None, params))
+    
+    # Create a new scope for the function body
+    push_scope()
+    
+    # Add parameters to the function's scope
+    for i, param in enumerate(params):
+        current_scope().add_symbol(param, Symbol(param, "parameter", i, None))
+    
+    # Function body
+    N.add_child(instruction())
+    
+    # pop_scope() #? Ask teacher
+    return N
 
-    # Function Call
-    if check("tok_ident"):
-        func_name = L.value
-        accept("tok_ident")
-        accept("tok_open_parentheses")
-        call_node = Node("nod_call", func_name, [])
-        while not check("tok_close_parentheses"):
-            call_node.add_child(expression())
-            if not check("tok_comma"):
-                break
-        accept("tok_close_parentheses")
-        return call_node
-                    
+
 def anasynth():
-    global T, L, line_counter, character_counter, nbVar, funcMode
+    global T, L, line_counter, character_counter, nbVar
     ast = []
     while T is not None and T.type != "tok_eof":
-        if funcMode:
-            N = function()
-        else:
-            N = instruction()
+        N = function()
         if N is not None:
             ast.append(N)
         else:
             raise Exception("Error: Node from instruction/function is None")
-    # for node in ast:
-    #     print(node)
+    print("Abstract Syntax Tree:")
+    display_ast(ast)
     return ast
 
 def push_scope():
@@ -765,11 +787,15 @@ def gencode(N):
             raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
         print(f"push {symbol.adress}")
 
+
     # Function Handling
     elif N.type == "nod_function":
         print(f".{N.value}:")
-        for i in range(1, len(N.children)):
-            gencode(N.children[i])
+        gencode(N.children[0])  # Generate code for the function body
+    elif N.type == "nod_call":
+        for arg in reversed(N.children[1:]):  # Push arguments in reverse order
+            gencode(arg)
+        print(f"call {N.value}")
     elif N.type == "nod_return":
         gencode(N.children[0])
         print("ret")
@@ -787,8 +813,6 @@ def gencode(N):
     
     
 # ---------------------------- main ----------------------------
-
-funcMode = True
 
 
 code_line = open("code.c", 'r').read().split("\n")
