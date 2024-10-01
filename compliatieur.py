@@ -808,6 +808,9 @@ def gencode(N, count_only=False):
         if symbol is None:
             raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
         print(f"push {symbol.adress}")
+    elif N.type == "nod_dereference":
+        gencode(N.children[0])
+        print("  load")
         
     # Function Handling
     elif N.type == "nod_function":
