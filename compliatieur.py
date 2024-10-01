@@ -473,14 +473,10 @@ def instruction():
 
     # Conditional Statement
     elif check("tok_if"):
-        print("if statement")
         accept("tok_open_parentheses")
         condition = expression()
-        print("condition:", condition)
         accept("tok_close_parentheses")
-        print("if instruction")
         then_instr = instruction()
-        print("then instruction:", then_instr)
         if check("tok_else"):
             else_instr = instruction()
             return Node("nod_if_else", "if_else", [condition, then_instr, else_instr])
@@ -491,12 +487,12 @@ def instruction():
         # print("while statement")
         accept("tok_open_parentheses")
         condition = expression()
-        # print("condition:", condition)
         accept("tok_close_parentheses")
-        # print("while instruction")
-        loop_instr = instruction()
-        # print("loop instruction:", loop_instr)
-        return Node("nod_while", "while", [condition, loop_instr])
+        N = Node("nod_while", "while", [condition])
+        while not check("tok_close_braces"):
+            N.add_child(Node("nod_instructions", "instructions", []))
+            N.children[-1].add_child(instruction())
+        return N
     
     # For Loop
     elif check("tok_for"):
@@ -516,10 +512,11 @@ def instruction():
         accept("tok_open_braces")
         
         # Loop Body
-        loop_instr = instruction()
-        accept("tok_close_braces")
-
-        return Node("nod_for", "for", [init, condition, increment, loop_instr])
+        N = Node("nod_for", "for", [init, condition, increment])
+        while not check("tok_close_braces"):
+            N.add_child(Node("nod_instructions", "instructions", []))
+            N.children[-1].add_child(instruction())
+        return N
 
     # Break Statement
     elif check("tok_break"):
@@ -641,16 +638,35 @@ def generate_start():
     print("  call 0")
     print("halt")
 
-def generate_function_prologue(function_name, param_count):
+def generate_function_prologue(function_name, param_count, var_count):
     print(f"resn {param_count}")
     print(f"  .{function_name}")
+    print(f"  resn {var_count}")  # Reserve space for local variables
 
-def generate_function_epilogue():
+def generate_function_epilogue(var_count):
+    print(f"  drop {var_count}")  # Clean up local variables
     print("  ret")
-    # print(f"drop {nbVar}")
 
-def gencode(N):
+def count_variables(N):
+    if N.type == "nod_declaration":
+        return 1
+    elif N.type in ["nod_block", "nod_if", "nod_if_else", "nod_while", "nod_for"]:
+        count = 0
+        for child in N.children:
+            count += count_variables(child)
+        return count
+    elif N.type == "nod_function":
+        return count_variables(N.children[0])  # Count variables in function body
+    elif N.type == "nod_instructions":
+        return sum(count_variables(child) for child in N.children)
+    else:
+        return 0
+
+def gencode(N, count_only=False):
     global nbVar
+    if count_only:
+        return count_variables(N)
+    
     def binary_operation(N, operation):
         gencode(N.children[0]) 
         gencode(N.children[1])
@@ -714,41 +730,45 @@ def gencode(N):
         label_else = generate_label()
         label_end = generate_label()
         gencode(N.children[0])
-        print(f"jumpf {label_else}")
+        print(f"  jumpf {label_else}")
         gencode(N.children[1])
-        print(f"jump {label_end}")
-        print(f"{label_else}:")
-        print(f"{label_end}:")
+        print(f"  jump {label_end}")
+        print(f".{label_else}")
+        print(f".{label_end}")
     elif N.type == "nod_if_else":
         label_else = generate_label()
         label_end = generate_label()
         gencode(N.children[0])
-        print(f"jumpf {label_else}")
+        print(f"  jumpf {label_else}")
         gencode(N.children[1])
-        print(f"jump {label_end}")
-        print(f"{label_else}:")
+        print(f"  jump {label_end}")
+        print(f".{label_else}")
         gencode(N.children[2])
-        print(f"{label_end}:")
+        print(f".{label_end}")
     elif N.type == "nod_while":
         label_start = generate_label()
         label_end = generate_label()
-        print(f"{label_start}:")
-        gencode(N.children[0])
-        print(f"jumpf {label_end}")
-        gencode(N.children[1])
-        print(f"jump {label_start}")
-        print(f"{label_end}:")
+        print(f".{label_start}")
+        gencode(N.children[0])  # Condition
+        print(f"  jumpf {label_end}")
+        for instruction in N.children[1].children:  # Loop through instructions
+            gencode(instruction)
+        print(f"  jump {label_start}")
+        print(f".{label_end}")
     elif N.type == "nod_for":
-        gencode(N.children[0])
         label_start = generate_label()
         label_end = generate_label()
-        print(f"{label_start}:")
-        gencode(N.children[1])
-        print(f"jumpf {label_end}")
-        gencode(N.children[3])
-        gencode(N.children[2])
-        print(f"jump {label_start}")
-        print(f"{label_end}:")
+        label_increment = generate_label()
+        gencode(N.children[0])  # Initialization
+        print(f".{label_start}")
+        gencode(N.children[1])  # Condition
+        print(f"  jumpf {label_end}")
+        for instruction in N.children[3].children:  # Loop body
+            gencode(instruction)
+        print(f".{label_increment}")
+        gencode(N.children[2])  # Increment
+        print(f"  jump {label_start}")
+        print(f".{label_end}")
     elif N.type == "nod_break":
         print("jump end_while")
     elif N.type == "nod_continue":
@@ -760,6 +780,9 @@ def gencode(N):
         print("  send")
     elif N.type == "nod_receive":
         print("  recv")
+    elif N.type == "nod_debug":
+        gencode(N.children[0])
+        print("  dbg")
     elif N.type == "nod_drop":
         gencode(N.children[0])
         print("  drop 1")
@@ -790,11 +813,10 @@ def gencode(N):
     elif N.type == "nod_function":
         function_name = N.value
         param_count = len(find_symbol(function_name).value)
-        generate_function_prologue(function_name, param_count)
-        nbVar = 0  # Reset nbVar for each function
-        gencode(N.children[0])  # Generate code for the function body
-        # Remove the call to generate_function_epilogue()
-        # The epilogue (ret) will be handled by nod_return
+        var_count = count_variables(N.children[0])
+        generate_function_prologue(function_name, param_count, var_count)
+        gencode(N.children[0])
+        generate_function_epilogue(var_count)
     elif N.type == "nod_call":
         print(f"  prep {N.value} ;{N.value}")
         for arg in N.children[1:]:
@@ -806,10 +828,12 @@ def gencode(N):
         # Add a return flag to indicate that we've already generated a ret instruction
         return True
     
+    elif N.type == "nod_instructions":
+        for child in N.children:
+            gencode(child)
+            
     else:
-        return False
-        # raise Exception("Error: unknown node type", N.type)
-
+        raise Exception("Error: unknown node type", N.type)
   
 # ---------------------------- degub ----------------------------
             
@@ -834,7 +858,7 @@ T = None
 L = None
 label_counter = 0
 nbVar = 0
-# List of scopes, each scope is a list of symbols
+# List of scopes, each scope is made of symbols (name, type, adress, value)
 var_scopes = [Scope()]
 
 
@@ -843,8 +867,8 @@ tokens = analex(code)
 next()
 push_scope()
 ast = anasynth()
-semantic_analysis(ast)
-ret_generated = False
+semantic_analysis(ast) 
+ret_generated = False # flag to check if a return statement has been generated
 for node in ast:
     node = Optim(node)
     ret_generated = gencode(node)

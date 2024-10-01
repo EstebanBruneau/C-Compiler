@@ -1,9 +1,12 @@
-    int fonction(int a){
-        return a;
+int main(){
+    int a;
+    a = 0;
+    int i;
+    for(i = 0; i < 10; i=i+1){
+        a = a + 1;
+        
     }
+    debug a;
 
-    int main(){
-        int b; 
-        b = fonction(3);
-        return 0;
-    }
+    return 0;
+}
