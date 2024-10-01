@@ -24,31 +24,11 @@ class Node:
         return f"Node(type={self.type}, value={self.value}, children={self.children})"
     
 class Symbol:
-    """
-    A class to represent a symbol in a compiler.
-
-    Attributes
-    ----------
-    name : str
-        The name of the symbol.
-    type : str
-        The type of the symbol (e.g., variable, function).
-    value : any
-        The value associated with the symbol.
-
-    Methods
-    -------
-    __init__(name, type, value)
-        Initializes the Symbol with a name, type, and value.
-    
-    __str__()
-        Returns a string representation of the Symbol.
-    """
     def __init__(self, name, type, adress, value):
         self.name = name
         self.type = type
         self.adress = adress
-        self.value = value
+        self.value = value if type == "function" else None
         
     def __str__(self):
         return "Symbol: " + self.name + " " + self.type + " " + str(self.value)
@@ -605,8 +585,8 @@ def anasynth():
             ast.append(N)
         else:
             raise Exception("Error: Node from instruction/function is None")
-    print("Abstract Syntax Tree:")
-    display_ast(ast)
+    # print("Abstract Syntax Tree:")
+    # display_ast(ast)
     return ast
 
 def push_scope():
@@ -655,7 +635,22 @@ def find_symbol(name):
             return symbol
     return None
 
+def generate_start():
+    print(".start")
+    print("  prep main")
+    print("  call 0")
+    print("halt")
+
+def generate_function_prologue(function_name, param_count):
+    print(f"resn {param_count}")
+    print(f"  .{function_name}")
+
+def generate_function_epilogue():
+    print("  ret")
+    # print(f"drop {nbVar}")
+
 def gencode(N):
+    global nbVar
     def binary_operation(N, operation):
         gencode(N.children[0]) 
         gencode(N.children[1])
@@ -668,48 +663,48 @@ def gencode(N):
     if N.type == "nod_eof":
         return
     elif N.type == "nod_constant":
-        print(f"push {N.value}")
+        print(f"  push {N.value}")
 
     # Unary Operations
     elif N.type == "nod_unary_minus":
-        print("push 0")
+        print("  push 0")
         gencode(N.children[0])
-        print("sub")
+        print("  sub")
     elif N.type == "nod_logical_not":
         gencode(N.children[0])
-        print("not")
+        print("  not")
 
     # Binary Operations
     elif N.type == "nod_binary_plus":
-        binary_operation(N, "add")
+        binary_operation(N, "  add")
     elif N.type == "nod_binary_minus":
-        binary_operation(N, "sub")
+        binary_operation(N, "  sub")
     elif N.type == "nod_multiplication":
-        binary_operation(N, "mul")
+        binary_operation(N, "  mul")
     elif N.type == "nod_division":
-        binary_operation(N, "div")
+        binary_operation(N, "  div")
     elif N.type == "nod_modulo":
-        binary_operation(N, "mod")
+        binary_operation(N, "  mod")
 
     # Comparison Operations
     elif N.type == "nod_greater":
-        binary_operation(N, "cmpgt")
+        binary_operation(N, "  cmpgt")
     elif N.type == "nod_less":
-        binary_operation(N, "cmplt")
+        binary_operation(N, "  cmplt")
     elif N.type == "nod_greater_equal":
-        binary_operation(N, "cmpge")
+        binary_operation(N, "  cmpge")
     elif N.type == "nod_less_equal":
-        binary_operation(N, "cmple")
+        binary_operation(N, "  cmple")
     elif N.type == "nod_double_equal":
-        binary_operation(N, "cmpeq")
+        binary_operation(N, "  cmpeq")
     elif N.type == "nod_different":
-        binary_operation(N, "cmpne")
+        binary_operation(N, "  cmpne")
 
     # Logical Operations
     elif N.type == "nod_and":
-        binary_operation(N, "and")
+        binary_operation(N, "  and")
     elif N.type == "nod_or":
-        binary_operation(N, "or")
+        binary_operation(N, "  or")
 
     # Control Flow
     elif N.type == "nod_block":
@@ -762,49 +757,58 @@ def gencode(N):
     # Special Operations
     elif N.type == "nod_send":
         gencode(N.children[0])
-        print("send")
+        print("  send")
     elif N.type == "nod_receive":
-        print("recv")
+        print("  recv")
     elif N.type == "nod_drop":
-        print("drop 1")
+        gencode(N.children[0])
+        print("  drop 1")
 
     # Variable Handling
     elif N.type == "nod_declaration":
-        symbol = Symbol(N.value, "type_variable", nbVar, None)
-        current_scope().add_symbol(N.value, symbol)
-        print(f"resn 1")
+        nbVar += 1
     elif N.type == "nod_ident":
         symbol = find_symbol(N.value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
-        print(f"get {symbol.adress}")
+        print(f"  get {symbol.adress} ; {N.value}")
     elif N.type == "nod_assign":
         gencode(N.children[1])
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
-        print(f"set {symbol.adress}")
+        print(f"  dup")
+        print(f"  set {symbol.adress}")
+        print("  drop 1")
     elif N.type == "nod_address":
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
         print(f"push {symbol.adress}")
-
+        
     # Function Handling
     elif N.type == "nod_function":
-        print(f"{N.value}:")
+        function_name = N.value
+        param_count = len(find_symbol(function_name).value)
+        generate_function_prologue(function_name, param_count)
+        nbVar = 0  # Reset nbVar for each function
         gencode(N.children[0])  # Generate code for the function body
+        # Remove the call to generate_function_epilogue()
+        # The epilogue (ret) will be handled by nod_return
     elif N.type == "nod_call":
-        print(f"prep {N.value}")
-        for arg in reversed(N.children[1:]):  # Push arguments in reverse order
+        print(f"  prep {N.value} ;{N.value}")
+        for arg in N.children[1:]:
             gencode(arg)
-        print(f"call {len(N.children) - 1}")
+        print(f"  call {len(N.children) - 1}")
     elif N.type == "nod_return":
         gencode(N.children[0])
-        print("ret")
+        print("  ret")
+        # Add a return flag to indicate that we've already generated a ret instruction
+        return True
     
     else:
-        raise Exception("Error: unknown node type", N.type)
+        return False
+        # raise Exception("Error: unknown node type", N.type)
 
   
 # ---------------------------- degub ----------------------------
@@ -830,24 +834,20 @@ T = None
 L = None
 label_counter = 0
 nbVar = 0
-
 # List of scopes, each scope is a list of symbols
 var_scopes = [Scope()]
 
 
-
-print(".start")
-print("prep main")
-print("call 0")
-# print("halt") #?
-
+generate_start()
 tokens = analex(code)
 next()
 push_scope()
 ast = anasynth()
 semantic_analysis(ast)
+ret_generated = False
 for node in ast:
     node = Optim(node)
-    gencode(node)
-print("dbg")
+    ret_generated = gencode(node)
+    if ret_generated:
+        break
 pop_scope()
