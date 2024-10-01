@@ -48,7 +48,7 @@ class Symbol:
         self.name = name
         self.type = type
         self.adress = adress
-        self.value = value 
+        self.value = value
         
     def __str__(self):
         return "Symbol: " + self.name + " " + self.type + " " + str(self.value)
@@ -225,6 +225,10 @@ def next():
     elif char1 == "d" and char2 == "e" and code[character_counter + 2] == "b" and code[character_counter + 3] == "u" and code[character_counter + 4] == "g":
         T = Token(0, "tok_debug", line_counter)
         character_counter += 5
+        return
+    elif char1 == "f" and char2 == "o" and code[character_counter + 2] == "r":
+        T = Token(0, "tok_for", line_counter)
+        character_counter += 3
         return
     # types
     elif char1 == "i" and char2 == "n" and code[character_counter + 2] == "t":
@@ -417,22 +421,28 @@ def instruction():
         # pop_scope()
         return N
 
-   # Variable Declaration
+    # Declaration Statement (Variable or Pointer)
     elif check("tok_int"):
-        pointer_level = 0
-        while check("tok_*"):
-            pointer_level += 1
-            
-        accept("tok_ident")
-        var_type = "int" + "*" * pointer_level
-        symbol = Symbol(L.value, var_type, nbVar, None)
-        current_scope().add_symbol(L.value, symbol)
-        N = Node("nod_declaration", L.value, [])
-        nbVar += 1
-        accept("tok_semicolon")
-        return N
-    
-    # Assignment Statement
+        # Pointer
+        if check("tok_*"):
+            accept("tok_ident")
+            symbol = Symbol(L.value, "pointer", nbVar, None)
+            current_scope().add_symbol(L.value, symbol)
+            N = Node("nod_declaration", L.value, [])
+            nbVar += 1
+            accept("tok_semicolon")
+            return N
+        # Variable
+        else:
+            accept("tok_ident")
+            symbol = Symbol(L.value, "type_variable", nbVar, None)
+            current_scope().add_symbol(L.value, symbol)
+            N = Node("nod_declaration", L.value, [])
+            nbVar += 1
+            accept("tok_semicolon")
+            return N
+       
+    # Variable Assignment
     elif check("tok_ident"):
         symbol = find_symbol(L.value)
         if symbol is None:
@@ -472,15 +482,38 @@ def instruction():
     
     # While Loop
     elif check("tok_while"):
-        print("while statement")
+        # print("while statement")
         accept("tok_open_parentheses")
         condition = expression()
-        print("condition:", condition)
+        # print("condition:", condition)
         accept("tok_close_parentheses")
-        print("while instruction")
+        # print("while instruction")
         loop_instr = instruction()
-        print("loop instruction:", loop_instr)
+        # print("loop instruction:", loop_instr)
         return Node("nod_while", "while", [condition, loop_instr])
+    
+    # For Loop
+    elif check("tok_for"):
+        accept("tok_open_parentheses")
+        
+        # Initialization
+        init = expression()
+        accept("tok_semicolon")
+        
+        # Condition
+        condition = expression()
+        accept("tok_semicolon")
+        
+        # Increment
+        increment = expression()
+        accept("tok_close_parentheses")
+        accept("tok_open_braces")
+        
+        # Loop Body
+        loop_instr = instruction()
+        accept("tok_close_braces")
+
+        return Node("nod_for", "for", [init, condition, increment, loop_instr])
 
     # Break Statement
     elif check("tok_break"):
@@ -688,6 +721,17 @@ def gencode(N):
         gencode(N.children[1])
         print("jmp", label_start)
         print(label_end + ":")
+    elif N.type == "nod_for":
+        gencode(N.children[0])
+        label_start = generate_label()
+        label_end = generate_label()
+        print(label_start + ":")
+        gencode(N.children[1])
+        print("jz", label_end)
+        gencode(N.children[3])
+        gencode(N.children[2])
+        print("jmp", label_start)
+        print(label_end + ":")
     elif N.type == "nod_break":
         print("jmp", "end_while")
     elif N.type == "nod_continue":
@@ -715,10 +759,15 @@ def gencode(N):
         gencode(N.children[0])
         gencode(N.children[1])
         print("store")
+    elif N.type == "nod_address":
+        symbol = find_symbol(N.children[0].value)
+        if symbol is None:
+            raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
+        print(f"push {symbol.adress}")
 
     # Function Handling
     elif N.type == "nod_function":
-        print(f"{N.value}:")
+        print(f".{N.value}:")
         for i in range(1, len(N.children)):
             gencode(N.children[i])
     elif N.type == "nod_return":
