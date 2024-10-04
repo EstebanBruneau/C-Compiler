@@ -551,7 +551,6 @@ def instruction():
     
     # While Loop
     elif check("tok_while"):
-        # print("while statement")
         accept("tok_open_parentheses")
         condition = expression()
         accept("tok_close_parentheses")
@@ -653,6 +652,15 @@ def anasynth():
     # display_ast(ast)
     return ast
 
+def malloc(n):
+    global memory_pointer
+    r = memory_pointer
+    memory_pointer += n
+    return r
+
+# Initialize the memory pointer
+memory_pointer = 0
+
 def push_scope():
     # print("pushing scope : ")
     global nbVar, var_scopes
@@ -699,20 +707,20 @@ def find_symbol(name):
             return symbol
     return None
 
-def generate_start():
-    print(".start")
-    print("  prep main")
-    print("  call 0")
-    print("halt")
+def generate_start(file):
+    file.write(".start\n")
+    file.write("  prep main\n")
+    file.write("  call 0\n")
+    file.write("halt\n")
 
-def generate_function_prologue(function_name, param_count, var_count):
-    print(f"resn {param_count}")
-    print(f"  .{function_name}")
-    print(f"  resn {var_count}")  # Reserve space for local variables
+def generate_function_prologue(file, function_name, param_count, var_count):
+    file.write(f"resn {param_count}\n")
+    file.write(f"  .{function_name}\n")
+    file.write(f"  resn {var_count}\n")  # Reserve space for local variables
 
-def generate_function_epilogue(var_count):
-    print(f"  drop {var_count}")  # Clean up local variables
-    print("  ret")
+def generate_function_epilogue(file, var_count):
+    file.write(f"  drop {var_count}\n")  # Clean up local variables
+    file.write("  ret\n")
 
 def count_variables(N):
     if N.type == "nod_declaration":
@@ -729,15 +737,15 @@ def count_variables(N):
     else:
         return 0
 
-def gencode(N, count_only=False):
+def gencode(N, file, count_only=False):
     global nbVar
     if count_only:
         return count_variables(N)
     
     def binary_operation(N, operation):
-        gencode(N.children[0]) 
-        gencode(N.children[1])
-        print(f"{operation}")
+        gencode(N.children[0], file) 
+        gencode(N.children[1], file)
+        file.write(f"{operation}\n")
 
     if N is None:
         raise Exception("Error: gencode received None")
@@ -746,16 +754,16 @@ def gencode(N, count_only=False):
     if N.type == "nod_eof":
         return
     elif N.type == "nod_constant":
-        print(f"  push {N.value}")
+        file.write(f"  push {N.value}\n")
 
     # Unary Operations
     elif N.type == "nod_unary_minus":
-        print("  push 0")
-        gencode(N.children[0])
-        print("  sub")
+        file.write("  push 0\n")
+        gencode(N.children[0], file)
+        file.write("  sub\n")
     elif N.type == "nod_logical_not":
-        gencode(N.children[0])
-        print("  not")
+        gencode(N.children[0], file)
+        file.write("  not\n")
 
     # Binary Operations
     elif N.type == "nod_binary_plus":
@@ -792,67 +800,67 @@ def gencode(N, count_only=False):
     # Control Flow
     elif N.type == "nod_block":
         for child in N.children:
-            gencode(child)
+            gencode(child, file)
     elif N.type == "nod_if":
         label_else = generate_label()
         label_end = generate_label()
-        gencode(N.children[0])
-        print(f"  jumpf {label_else}")
-        gencode(N.children[1])
-        print(f"  jump {label_end}")
-        print(f".{label_else}")
-        print(f".{label_end}")
+        gencode(N.children[0], file)
+        file.write(f"  jumpf {label_else}\n")
+        gencode(N.children[1], file)
+        file.write(f"  jump {label_end}\n")
+        file.write(f".{label_else}\n")
+        file.write(f".{label_end}\n")
     elif N.type == "nod_if_else":
         label_else = generate_label()
         label_end = generate_label()
-        gencode(N.children[0])
-        print(f"  jumpf {label_else}")
-        gencode(N.children[1])
-        print(f"  jump {label_end}")
-        print(f".{label_else}")
-        gencode(N.children[2])
-        print(f".{label_end}")
+        gencode(N.children[0], file)
+        file.write(f"  jumpf {label_else}\n")
+        gencode(N.children[1], file)
+        file.write(f"  jump {label_end}\n")
+        file.write(f".{label_else}\n")
+        gencode(N.children[2], file)
+        file.write(f".{label_end}\n")
     elif N.type == "nod_while":
         label_start = generate_label()
         label_end = generate_label()
-        print(f".{label_start}")
-        gencode(N.children[0])  # Condition
-        print(f"  jumpf {label_end}")
+        file.write(f".{label_start}\n")
+        gencode(N.children[0], file)  # Condition
+        file.write(f"  jumpf {label_end}\n")
         for instruction in N.children[1].children:  # Loop through instructions
-            gencode(instruction)
-        print(f"  jump {label_start}")
-        print(f".{label_end}")
+            gencode(instruction, file)
+        file.write(f"  jump {label_start}\n")
+        file.write(f".{label_end}\n")
     elif N.type == "nod_for":
         label_start = generate_label()
         label_end = generate_label()
         label_increment = generate_label()
-        gencode(N.children[0])  # Initialization
-        print(f".{label_start}")
-        gencode(N.children[1])  # Condition
-        print(f"  jumpf {label_end}")
+        gencode(N.children[0], file)  # Initialization
+        file.write(f".{label_start}\n")
+        gencode(N.children[1], file)  # Condition
+        file.write(f"  jumpf {label_end}\n")
         for instruction in N.children[3].children:  # Loop body
-            gencode(instruction)
-        print(f".{label_increment}")
-        gencode(N.children[2])  # Increment
-        print(f"  jump {label_start}")
-        print(f".{label_end}")
+            gencode(instruction, file)
+        file.write(f".{label_increment}\n")
+        gencode(N.children[2], file)  # Increment
+        file.write(f"  jump {label_start}\n")
+        file.write(f".{label_end}\n")
     elif N.type == "nod_break":
-        print("jump end_while")
+        pass
     elif N.type == "nod_continue":
-        print("jump start_while")
+        pass
 
     # Special Operations
     elif N.type == "nod_send":
-        gencode(N.children[0])
-        print("  send")
+        gencode(N.children[0], file)
+        file.write("  send\n")
     elif N.type == "nod_receive":
-        print("  recv")
+        file.write("  recv\n")
     elif N.type == "nod_debug":
-        gencode(N.children[0])
-        print("  dbg")
+        gencode(N.children[0], file)
+        file.write("  dbg\n")
     elif N.type == "nod_drop":
-        gencode(N.children[0])
-        print("  drop 1")
+        gencode(N.children[0], file)
+        file.write("  drop 1\n")
 
     # Variable Handling
     elif N.type == "nod_declaration":
@@ -862,48 +870,48 @@ def gencode(N, count_only=False):
         if symbol is None:
             display_error(f"Symbol '{N.value}' not found in the current scope")
             sys.exit(1)
-        print(f"  get {symbol.adress} ; {N.value}")
+        file.write(f"  get {symbol.adress} ; {N.value}\n")
     elif N.type == "nod_assign":
-        gencode(N.children[1])
+        gencode(N.children[1], file)
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
             sys.exit(1)
-        print(f"  dup")
-        print(f"  set {symbol.adress}")
-        print("  drop 1")
+        file.write(f"  dup\n")
+        file.write(f"  set {symbol.adress}\n")
+        file.write("  drop 1\n")
     elif N.type == "nod_address":
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
             sys.exit(1)
-        print(f"push {symbol.adress}")
+        file.write(f"push {symbol.adress}\n")
     elif N.type == "nod_dereference":
-        gencode(N.children[0])
-        print("  load")
+        gencode(N.children[0], file)
+        file.write("  load\n")
         
     # Function Handling
     elif N.type == "nod_function":
         function_name = N.value
         param_count = len(find_symbol(function_name).value)
         var_count = count_variables(N.children[0])
-        generate_function_prologue(function_name, param_count, var_count)
-        gencode(N.children[0])
-        generate_function_epilogue(var_count)
+        generate_function_prologue(file, function_name, param_count, var_count)
+        gencode(N.children[0], file)
+        generate_function_epilogue(file, var_count)
     elif N.type == "nod_call":
-        print(f"  prep {N.value} ;{N.value}")
+        file.write(f"  prep {N.value} ;{N.value}\n")
         for arg in N.children[1:]:
-            gencode(arg)
-        print(f"  call {len(N.children) - 1}")
+            gencode(arg, file)
+        file.write(f"  call {len(N.children) - 1}\n")
     elif N.type == "nod_return":
-        gencode(N.children[0])
-        print("  ret")
+        gencode(N.children[0], file)
+        file.write("  ret\n")
         # Add a return flag to indicate that we've already generated a ret instruction
         return True
     
     elif N.type == "nod_instructions":
         for child in N.children:
-            gencode(child)
+            gencode(child, file)
             
     else:
         display_error(f"Unknown node type '{N.type}'")
@@ -936,17 +944,20 @@ nbVar = 0
 # List of scopes, each scope is made of symbols (name, type, adress, value)
 var_scopes = [Scope()]
 
+# Open the output file
+with open('code.asm', 'w') as output_file:
+    generate_start(output_file)
+    tokens = analex(code)
+    next()
+    push_scope()
+    ast = anasynth() 
+    semantic_analysis(ast) 
+    ret_generated = False # flag to check if a return statement has been generated
+    for node in ast:
+        node = Optim(node)
+        ret_generated = gencode(node, output_file)
+        if ret_generated:
+            break
+    pop_scope()
 
-generate_start()
-tokens = analex(code)
-next()
-push_scope()
-ast = anasynth() 
-semantic_analysis(ast) 
-ret_generated = False # flag to check if a return statement has been generated
-for node in ast:
-    node = Optim(node)
-    ret_generated = gencode(node)
-    if ret_generated:
-        break
-pop_scope()
+print("Assembly code has been written to 'code.asm'")
