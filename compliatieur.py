@@ -1,3 +1,7 @@
+import sys
+from colorama import init, Fore, Back, Style
+
+
 class Token:
     def __init__(self, value, t_type, line):
         self.type = t_type
@@ -46,7 +50,19 @@ class Scope:
 
     def __str__(self):
         return str(self.symbols)
-    
+   
+# Gestion des erreurs
+init(autoreset=True) # Initialize colorama
+def display_error(message, line=None, character=None):
+    error_prefix = f"{Fore.RED}{Style.BRIGHT}Error:{Style.RESET_ALL}"
+    location = f" at line {line-1}" if line else ""
+    location += f", character {line_character_counter}" if line_character_counter else ""
+    if message == "Unexpected token 'tok_eof'":
+        print(f"{error_prefix} Unexpected end of file{location}", file=sys.stderr)
+    else:
+        print(f"{error_prefix} {message}{location}", file=sys.stderr)
+        
+
 def display_ast(node, indent=0):
     """Recursively display the AST nodes."""
     if isinstance(node, list):
@@ -59,12 +75,13 @@ def display_ast(node, indent=0):
             display_ast(child, indent + 1)
 
 def next():
-    global character_counter, T, line_counter, code, L
+    global character_counter, T, line_counter, code, L, line_character_counter
     L = T
     
     if character_counter >= len(code):
         T = Token(0, "tok_eof", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     char1 = code[character_counter]
     char2 = code[character_counter + 1] if character_counter + 1 < len(code) else ''
@@ -72,95 +89,117 @@ def next():
     # spaces
     if char1 == " ":
         character_counter += 1
+        line_character_counter += 1
         next()
     # new line
     elif char1 == "\\":
         if char2 == "n":
             line_counter += 1
             character_counter += 2
+            line_character_counter = 0  # Reset for new line
             next()
         else:
-            print("Error: invalid token", char1, "at line", line_counter)
+            display_error(f"Invalid token '{char1}'", line_counter, line_character_counter)
             character_counter += 1
+            line_character_counter += 1
             next()
     # signs/operations
     elif char1 == "(": 
         T = Token(0 , "tok_open_parentheses", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == ")":
         T = Token(0, "tok_close_parentheses", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "{":
         T = Token(0, "tok_open_braces", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "}":
         T = Token(0, "tok_close_braces", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "[":
         T = Token(0, "tok_open_brackets", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "]":
         T = Token(0, "tok_close_brackets", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == ";":
         T = Token(0, "tok_semicolon", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == ",":
         T = Token(0, "tok_comma", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "+":
         T = Token(0, "tok_plus", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "-":
         T = Token(0, "tok_minus", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "*":
         T = Token(0, "tok_*", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "/":
         T = Token(0, "tok_div", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "%":
         T = Token(0, "tok_mod", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "&":
         T = Token(0, "tok_&", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "!":
         T = Token(0, "tok_not", line_counter)
         character_counter += 1
+        line_character_counter += 1
         return
     elif char1 == "=":
         if char2 == "=":
             T = Token(0, "tok_double_equal", line_counter)
             character_counter += 2
+            line_character_counter += 2
             return
         else:
             T = Token(0, "tok_assign", line_counter)
             character_counter += 1
+            line_character_counter += 1
             return
     elif char1 == ">":
         if char2 == "=":
             T = Token(0, "tok_greater_equal", line_counter)
             character_counter += 2
+            line_character_counter += 2
             return
         else:
             T = Token(0, "tok_greater", line_counter)
             character_counter += 1
+            line_character_counter += 1
             return
     elif char1 == "<":
         if char2 == "=":
@@ -168,72 +207,87 @@ def next():
         else:
             T = Token(0, "tok_less", line_counter)
             character_counter += 1
+            line_character_counter += 1
             return
     elif char1 == "|":
         if char2 == "|":
             T = Token(0, "tok_or", line_counter)
             character_counter += 2
+            line_character_counter += 2
         else:
-            raise Exception("Error: invalid token", char1, "at line", line_counter)
-            character_counter += 1
-            return
+            display_error(f"Invalid token '{char1}'", line_counter, line_character_counter)
+            sys.exit(1)
     elif char1 == "&":
         if char2 == "&":
             T = Token(0, "tok_and", line_counter)
             character_counter += 2
+            line_character_counter += 2
         else:
             T = Token(0, "tok_&", line_counter)
             character_counter += 1
+            line_character_counter += 1
     # keywords
     elif char1 == "i" and char2 == "f":
         T = Token(0, "tok_if", line_counter)
         character_counter += 2
+        line_character_counter += 2
         return
     elif char1 == "e" and char2 == "l" and code[character_counter + 2] == "s" and code[character_counter + 3] == "e":
         T = Token(0, "tok_else", line_counter)
         character_counter += 4
+        line_character_counter += 4
         return
     elif char1 == "w" and char2 == "h" and code[character_counter + 2] == "i" and code[character_counter + 3] == "l" and code[character_counter + 4] == "e":
         T = Token(0, "tok_while", line_counter)
         character_counter += 5
+        line_character_counter += 5
         return
     elif char1 == "d" and char2 == "o":
         T = Token(0, "tok_do", line_counter)
         character_counter += 2
+        line_character_counter += 2
         return
     elif char1 == "b" and char2 == "r" and code[character_counter + 2] == "e" and code[character_counter + 3] == "a" and code[character_counter + 4] == "k":
         T = Token(0, "tok_break", line_counter)
         character_counter += 5
+        line_character_counter += 5
         return
     elif char1 == "c" and char2 == "o" and code[character_counter + 2] == "n" and code[character_counter + 3] == "t" and code[character_counter + 4] == "i" and code[character_counter + 5] == "n" and code[character_counter + 6] == "u" and code[character_counter + 7] == "e":
         T = Token(0, "tok_continue", line_counter)
         character_counter += 8
+        line_character_counter += 8
         return
     elif char1 == "r" and char2 == "e" and code[character_counter + 2] == "t" and code[character_counter + 3] == "u" and code[character_counter + 4] == "r" and code[character_counter + 5] == "n":
         T = Token(0, "tok_return", line_counter)
         character_counter += 6
+        line_character_counter += 6
         return
     elif char1 == "d" and char2 == "e" and code[character_counter + 2] == "b" and code[character_counter + 3] == "u" and code[character_counter + 4] == "g":
         T = Token(0, "tok_debug", line_counter)
         character_counter += 5
+        line_character_counter += 5
         return
     elif char1 == "f" and char2 == "o" and code[character_counter + 2] == "r":
         T = Token(0, "tok_for", line_counter)
         character_counter += 3
+        line_character_counter += 3
         return
     # types
     elif char1 == "i" and char2 == "n" and code[character_counter + 2] == "t":
         T = Token(0, "tok_int", line_counter)
         character_counter += 3
+        line_character_counter += 3
         return
     # send and recieve
     elif char1 == "s" and char2 == "e" and code[character_counter + 2] == "n" and code[character_counter + 3] == "d":
         T = Token(0, "tok_send", line_counter)
         character_counter += 4
+        line_character_counter += 4
         return
     elif char1 == "r" and char2 == "e" and code[character_counter + 2] == "c" and code[character_counter + 3] == "i" and code[character_counter + 4] == "e" and code[character_counter + 5] == "v" and code[character_counter + 6] == "e":
         T = Token(0, "tok_recieve", line_counter)
         character_counter += 7
+        line_character_counter += 7
         return
     # identifiers
     elif char1.isalpha():
@@ -241,6 +295,7 @@ def next():
         while code[character_counter].isalpha() or code[character_counter].isdigit():
             ident += code[character_counter]
             character_counter += 1
+            line_character_counter += 1
         T = Token(ident, "tok_ident", line_counter)
         return
     # constants
@@ -249,12 +304,14 @@ def next():
         while code[character_counter].isdigit():
             constant += code[character_counter]
             character_counter += 1
+            line_character_counter += 1
         constant = int(constant)
         T = Token(constant, "tok_constant", line_counter)
         return
     # unrecognized token
     else:
-        raise Exception("Error: invalid token", char1, "at line", line_counter)
+        display_error(f"Invalid token '{char1}'", line_counter, line_character_counter)
+        sys.exit(1)
  
 def check(type):
     global T
@@ -266,15 +323,18 @@ def check(type):
 def accept(type):
     global T
     if T is None:
-        raise Exception("Error: unexpected None token at line", line_counter, character_counter)
+        display_error("Unexpected None token", line_counter, line_character_counter)
+        sys.exit(1)
     if T.type != type:
-        raise Exception("Error: Found token", T.type, "instead of", type, "at line", T.line, character_counter)
+        display_error(f"Found token '{T.type}' instead of '{type}'", T.line, line_character_counter)
+        sys.exit(1)
     next()
 
 def analex(code):
-    global line_counter, character_counter, T
+    global line_counter, character_counter, T, line_character_counter
     line_counter = 1
     character_counter = 0
+    line_character_counter = 0
     T = None
     list_tokens = []
     while character_counter < len(code)+1:
@@ -285,6 +345,7 @@ def analex(code):
     T = None
     character_counter = 0
     line_counter = 1
+    line_character_counter = 0
     
     # print("Analex done")
     # for token in list_tokens:
@@ -299,7 +360,8 @@ def anasem(N):
     if N.type == "nod_ident":
         symbol = find_symbol(N.value)
         if symbol is None:
-            raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
+            display_error(f"Symbol '{N.value}' not found in the current scope")
+            sys.exit(1)
     elif N.type == "nod_function":
         push_scope()
         for child in N.children:
@@ -308,9 +370,11 @@ def anasem(N):
     elif N.type == "nod_call":
         function_symbol = find_symbol(N.value)
         if function_symbol is None or function_symbol.type != "function":
-            raise Exception(f"Error: function '{N.value}' not found or is not a function")
+            display_error(f"Function '{N.value}' not found or is not a function")
+            sys.exit(1)
         if len(N.children) - 1 != len(function_symbol.value):  # -1 because the first child is the function name
-            raise Exception(f"Error: incorrect number of arguments for function '{N.value}'")
+            display_error(f"Incorrect number of arguments for function '{N.value}'")
+            sys.exit(1)
         for child in N.children[1:]:  # Skip the first child (function name)
             anasem(child)
     else:
@@ -324,7 +388,7 @@ def atom():
     global T, L
 
     if check("tok_constant"):
-        value = L.value  # Capture the value of the constant token
+        value = L.value
         return Node("nod_constant", value, [])
         
     elif check("tok_open_parentheses"):
@@ -335,11 +399,12 @@ def atom():
     elif check("tok_ident"):
         symbol = find_symbol(L.value)
         if symbol is None:
-            print("Scope:", current_scope())
-            raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
+            display_error(f"Symbol '{L.value}' not found in the current scope", T.line, line_character_counter)
+            sys.exit(1)
         return Node("nod_ident", L.value, [])
     
-    raise Exception("Error: unexpected token", T.type, "at line", T.line)
+    display_error(f"Unexpected token '{T.type}'", T.line, line_character_counter)
+    sys.exit(1)
             
 def suffix():
     global T, L
@@ -410,7 +475,7 @@ def expression2(pmin):
     return Node1
 
 def instruction():
-    global T, L, line_counter, character_counter, nbVar
+    global T, L, line_counter, character_counter, nbVar, line_character_counter
 
     # Debug Statement
     if check("tok_debug"):
@@ -452,7 +517,8 @@ def instruction():
     elif check("tok_ident"):
         symbol = find_symbol(L.value)
         if symbol is None:
-            raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
+            display_error(f"Symbol '{L.value}' not found in the current scope", T.line, line_character_counter)
+            sys.exit(1)
         N = Node("nod_assign", L.value, [])
         N.add_child(Node("nod_ident", L.value, []))
         accept("tok_assign")
@@ -463,7 +529,8 @@ def instruction():
         accept("tok_ident")
         symbol = find_symbol(L.value)
         if symbol is None:
-            raise Exception(f"Error: symbol '{L.value}' not found in the current scope")
+            display_error(f"Symbol '{L.value}' not found in the current scope", T.line, line_character_counter)
+            sys.exit(1)
         N = Node("nod_assign", L.value, [])
         N.add_child(Node("nod_ident", L.value, []))
         accept("tok_assign")
@@ -793,20 +860,23 @@ def gencode(N, count_only=False):
     elif N.type == "nod_ident":
         symbol = find_symbol(N.value)
         if symbol is None:
-            raise Exception(f"Error: symbol '{N.value}' not found in the current scope")
+            display_error(f"Symbol '{N.value}' not found in the current scope")
+            sys.exit(1)
         print(f"  get {symbol.adress} ; {N.value}")
     elif N.type == "nod_assign":
         gencode(N.children[1])
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
-            raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
+            display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
+            sys.exit(1)
         print(f"  dup")
         print(f"  set {symbol.adress}")
         print("  drop 1")
     elif N.type == "nod_address":
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
-            raise Exception(f"Error: symbol '{N.children[0].value}' not found in the current scope")
+            display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
+            sys.exit(1)
         print(f"push {symbol.adress}")
     elif N.type == "nod_dereference":
         gencode(N.children[0])
@@ -836,7 +906,8 @@ def gencode(N, count_only=False):
             gencode(child)
             
     else:
-        raise Exception("Error: unknown node type", N.type)
+        display_error(f"Unknown node type '{N.type}'")
+        sys.exit(1)
   
 # ---------------------------- degub ----------------------------
             
@@ -857,6 +928,7 @@ for line in code_line:
 
 line_counter = 1
 character_counter = 0
+line_character_counter = 0
 T = None
 L = None
 label_counter = 0
@@ -869,7 +941,7 @@ generate_start()
 tokens = analex(code)
 next()
 push_scope()
-ast = anasynth()
+ast = anasynth() 
 semantic_analysis(ast) 
 ret_generated = False # flag to check if a return statement has been generated
 for node in ast:
