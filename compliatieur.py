@@ -554,10 +554,10 @@ def instruction():
         accept("tok_open_parentheses")
         condition = expression()
         accept("tok_close_parentheses")
+        accept("tok_open_braces")
         N = Node("nod_while", "while", [condition])
         while not check("tok_close_braces"):
-            N.add_child(Node("nod_instructions", "instructions", []))
-            N.children[-1].add_child(instruction())
+            N.add_child(instruction())
         return N
     
     # For Loop
@@ -580,8 +580,7 @@ def instruction():
         # Loop Body
         N = Node("nod_for", "for", [init, condition, increment])
         while not check("tok_close_braces"):
-            N.add_child(Node("nod_instructions", "instructions", []))
-            N.children[-1].add_child(instruction())
+            N.add_child(instruction())
         return N
 
     # Break Statement
@@ -826,7 +825,7 @@ def gencode(N, file, count_only=False):
         file.write(f".{label_start}\n")
         gencode(N.children[0], file)  # Condition
         file.write(f"  jumpf {label_end}\n")
-        for instruction in N.children[1].children:  # Loop through instructions
+        for instruction in N.children[1:]:  # Loop through instructions
             gencode(instruction, file)
         file.write(f"  jump {label_start}\n")
         file.write(f".{label_end}\n")
@@ -838,7 +837,7 @@ def gencode(N, file, count_only=False):
         file.write(f".{label_start}\n")
         gencode(N.children[1], file)  # Condition
         file.write(f"  jumpf {label_end}\n")
-        for instruction in N.children[3].children:  # Loop body
+        for instruction in N.children[3:]:  # Loop body
             gencode(instruction, file)
         file.write(f".{label_increment}\n")
         gencode(N.children[2], file)  # Increment
@@ -927,8 +926,8 @@ def gencode(N, file, count_only=False):
 # ---------------------------- main ----------------------------
 
 
-code_line = open("C-Compiler/code.c", 'r').read().split("\n")
-code = ""
+code_line = open("code.c", 'r').read().split("\n")
+code = "" 
 for line in code_line:
     for c in line:
         code += c
