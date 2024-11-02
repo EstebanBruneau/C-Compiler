@@ -927,7 +927,7 @@ def gencode(N, file, count_only=False):
 # ---------------------------- main ----------------------------
 
 
-code_line = open("code.c", 'r').read().split("\n")
+code_line = open("C-Compiler/code.c", 'r').read().split("\n")
 code = ""
 for line in code_line:
     for c in line:
@@ -960,4 +960,4 @@ with open('code.asm', 'w') as output_file:
             break
     pop_scope()
 
-print("Assembly code has been written to 'code.asm'")
+print("\033[32mAssembly code has been written to 'code.asm'\033[0m")
