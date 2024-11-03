@@ -1,5 +1,7 @@
 import sys
 from colorama import init, Fore, Back, Style
+import os
+import glob
 
 
 class Token:
@@ -959,8 +961,7 @@ def gencode(N, file, count_only=False):
     
     
 # ---------------------------- main ----------------------------
-import os
-import glob
+
 
 def compile_file(input_file, output_file):
     global line_counter, character_counter, line_character_counter, T, L
