@@ -150,20 +150,33 @@ def next():
         line_character_counter += 1
         return
     elif char1 == "-":
-        T = Token(0, "tok_minus", line_counter)
-        character_counter += 1
-        line_character_counter += 1
-        return
+        if char2 == ">":
+            T = Token(0, "tok_arrow", line_counter)
+            character_counter += 2
+            line_character_counter += 2
+            return
+        else:
+            T = Token(0, "tok_minus", line_counter)
+            character_counter += 1
+            line_character_counter += 1
+            return
     elif char1 == "*":
         T = Token(0, "tok_*", line_counter)
         character_counter += 1
         line_character_counter += 1
         return
     elif char1 == "/":
-        T = Token(0, "tok_div", line_counter)
-        character_counter += 1
-        line_character_counter += 1
-        return
+        if char2 == "/":
+            while (1):
+                if code[character_counter] == "\\" and code[character_counter + 1] == "n":
+                    break
+                character_counter += 1
+            next()
+        else:
+            T = Token(0, "tok_div", line_counter)
+            character_counter += 1
+            line_character_counter += 1
+            return
     elif char1 == "%":
         T = Token(0, "tok_mod", line_counter)
         character_counter += 1
@@ -526,15 +539,16 @@ def instruction():
         accept("tok_semicolon")
         return N
     elif check("tok_*"):
+        A = Node("nod_dereference", "*", [])
         accept("tok_ident")
-        symbol = find_symbol(L.value)
+        ident = L.value  # Store the identifier value
+        symbol = find_symbol(ident)
         if symbol is None:
-            display_error(f"Symbol '{L.value}' not found in the current scope", T.line, line_character_counter)
+            display_error(f"Symbol '{ident}' not found in the current scope", T.line, line_character_counter)
             sys.exit(1)
-        N = Node("nod_assign", L.value, [])
-        N.add_child(Node("nod_ident", L.value, []))
+        A.add_child(Node("nod_ident", ident, []))
         accept("tok_assign")
-        N.add_child(expression())
+        N = Node("nod_assign", "deref_assign", [A, expression()])
         accept("tok_semicolon")
         return N
 
@@ -872,23 +886,31 @@ def gencode(N, file, count_only=False):
             sys.exit(1)
         file.write(f"  get {symbol.adress} ; {N.value}\n")
     elif N.type == "nod_assign":
-        gencode(N.children[1], file)
-        symbol = find_symbol(N.children[0].value)
-        if symbol is None:
-            display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
-            sys.exit(1)
-        file.write(f"  dup\n")
-        file.write(f"  set {symbol.adress}\n")
-        file.write("  drop 1\n")
+        if N.children[0].type == "nod_dereference":
+            # For *ptr = value case
+            gencode(N.children[0].children[0], file)  # Get ptr (address)
+            file.write("  get 0\n")  # Get address stored in ptr
+            gencode(N.children[1], file)  # Push value to assign
+            file.write("  set 0\n")  # Store value at address
+        else:
+            # Normal variable assignment
+            gencode(N.children[1], file)
+            symbol = find_symbol(N.children[0].value)
+            if symbol is None:
+                display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
+                sys.exit(1)
+            file.write(f"  dup\n")
+            file.write(f"  set {symbol.adress} ; {symbol.name}\n")
+            file.write("  drop 1\n")
     elif N.type == "nod_address":
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
             sys.exit(1)
-        file.write(f"push {symbol.adress}\n")
+        file.write(f"  push {symbol.adress} ; address of {symbol.name}\n")
     elif N.type == "nod_dereference":
-        gencode(N.children[0], file)
-        file.write("  load\n")
+        gencode(N.children[0], file)  # Get address
+        file.write("  get 0\n")  # Load value at address
         
     # Function Handling
     elif N.type == "nod_function":
