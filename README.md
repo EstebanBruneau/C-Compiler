@@ -119,4 +119,4 @@ Making a compiler for a part of the C language. Handling most of the language to
 
 ## Personal thoughts
 
-We genuinely loved working on this project. Understanding the process of translating a code into tokens, then making an AST. We have learned a lot throughout this project. It's a shame we could not finish everything in time, but we are still happy to have a working compiler. We might come back to update it in the future.
+I genuinely loved working on this project. Understanding the process of translating a code into tokens, then making an AST. I have learned a lot throughout this project. It's a shame I could not finish everything in time, but I am still happy to have a working compiler. I might come back to update it in the future.
