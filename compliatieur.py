@@ -55,7 +55,7 @@ class Scope:
 init(autoreset=True) # Initialize colorama
 def display_error(message, line=None, character=None):
     error_prefix = f"{Fore.RED}{Style.BRIGHT}Error:{Style.RESET_ALL}"
-    location = f" at line {line-1}" if line else ""
+    location = f" at line {line}" if line else ""
     location += f", character {line_character_counter}" if line_character_counter else ""
     if message == "Unexpected token 'tok_eof'":
         print(f"{error_prefix} Unexpected end of file{location}", file=sys.stderr)
@@ -150,20 +150,33 @@ def next():
         line_character_counter += 1
         return
     elif char1 == "-":
-        T = Token(0, "tok_minus", line_counter)
-        character_counter += 1
-        line_character_counter += 1
-        return
+        if char2 == ">":
+            T = Token(0, "tok_arrow", line_counter)
+            character_counter += 2
+            line_character_counter += 2
+            return
+        else:
+            T = Token(0, "tok_minus", line_counter)
+            character_counter += 1
+            line_character_counter += 1
+            return
     elif char1 == "*":
         T = Token(0, "tok_*", line_counter)
         character_counter += 1
         line_character_counter += 1
         return
     elif char1 == "/":
-        T = Token(0, "tok_div", line_counter)
-        character_counter += 1
-        line_character_counter += 1
-        return
+        if char2 == "/":
+            while (1):
+                if code[character_counter] == "\\" and code[character_counter + 1] == "n":
+                    break
+                character_counter += 1
+            next()
+        else:
+            T = Token(0, "tok_div", line_counter)
+            character_counter += 1
+            line_character_counter += 1
+            return
     elif char1 == "%":
         T = Token(0, "tok_mod", line_counter)
         character_counter += 1
@@ -526,15 +539,16 @@ def instruction():
         accept("tok_semicolon")
         return N
     elif check("tok_*"):
+        A = Node("nod_dereference", "*", [])
         accept("tok_ident")
-        symbol = find_symbol(L.value)
+        ident = L.value  # Store the identifier value
+        symbol = find_symbol(ident)
         if symbol is None:
-            display_error(f"Symbol '{L.value}' not found in the current scope", T.line, line_character_counter)
+            display_error(f"Symbol '{ident}' not found in the current scope", T.line, line_character_counter)
             sys.exit(1)
-        N = Node("nod_assign", L.value, [])
-        N.add_child(Node("nod_ident", L.value, []))
+        A.add_child(Node("nod_ident", ident, []))
         accept("tok_assign")
-        N.add_child(expression())
+        N = Node("nod_assign", "deref_assign", [A, expression()])
         accept("tok_semicolon")
         return N
 
@@ -554,10 +568,10 @@ def instruction():
         accept("tok_open_parentheses")
         condition = expression()
         accept("tok_close_parentheses")
+        accept("tok_open_braces")
         N = Node("nod_while", "while", [condition])
         while not check("tok_close_braces"):
-            N.add_child(Node("nod_instructions", "instructions", []))
-            N.children[-1].add_child(instruction())
+            N.add_child(instruction())
         return N
     
     # For Loop
@@ -579,9 +593,9 @@ def instruction():
         
         # Loop Body
         N = Node("nod_for", "for", [init, condition, increment])
+        
         while not check("tok_close_braces"):
-            N.add_child(Node("nod_instructions", "instructions", []))
-            N.children[-1].add_child(instruction())
+            N.add_child(instruction())
         return N
 
     # Break Statement
@@ -826,7 +840,7 @@ def gencode(N, file, count_only=False):
         file.write(f".{label_start}\n")
         gencode(N.children[0], file)  # Condition
         file.write(f"  jumpf {label_end}\n")
-        for instruction in N.children[1].children:  # Loop through instructions
+        for instruction in N.children[1:]:  # Loop through instructions
             gencode(instruction, file)
         file.write(f"  jump {label_start}\n")
         file.write(f".{label_end}\n")
@@ -838,7 +852,7 @@ def gencode(N, file, count_only=False):
         file.write(f".{label_start}\n")
         gencode(N.children[1], file)  # Condition
         file.write(f"  jumpf {label_end}\n")
-        for instruction in N.children[3].children:  # Loop body
+        for instruction in N.children[3:]:  # Loop body
             gencode(instruction, file)
         file.write(f".{label_increment}\n")
         gencode(N.children[2], file)  # Increment
@@ -872,23 +886,31 @@ def gencode(N, file, count_only=False):
             sys.exit(1)
         file.write(f"  get {symbol.adress} ; {N.value}\n")
     elif N.type == "nod_assign":
-        gencode(N.children[1], file)
-        symbol = find_symbol(N.children[0].value)
-        if symbol is None:
-            display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
-            sys.exit(1)
-        file.write(f"  dup\n")
-        file.write(f"  set {symbol.adress}\n")
-        file.write("  drop 1\n")
+        if N.children[0].type == "nod_dereference":
+            # For *ptr = value case
+            gencode(N.children[0].children[0], file)  # Get ptr (address)
+            file.write("  get 0\n")  # Get address stored in ptr
+            gencode(N.children[1], file)  # Push value to assign
+            file.write("  set 0\n")  # Store value at address
+        else:
+            # Normal variable assignment
+            gencode(N.children[1], file)
+            symbol = find_symbol(N.children[0].value)
+            if symbol is None:
+                display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
+                sys.exit(1)
+            file.write(f"  dup\n")
+            file.write(f"  set {symbol.adress} ; {symbol.name}\n")
+            file.write("  drop 1\n")
     elif N.type == "nod_address":
         symbol = find_symbol(N.children[0].value)
         if symbol is None:
             display_error(f"Symbol '{N.children[0].value}' not found in the current scope")
             sys.exit(1)
-        file.write(f"push {symbol.adress}\n")
+        file.write(f"  push {symbol.adress} ; address of {symbol.name}\n")
     elif N.type == "nod_dereference":
-        gencode(N.children[0], file)
-        file.write("  load\n")
+        gencode(N.children[0], file)  # Get address
+        file.write("  get 0\n")  # Load value at address
         
     # Function Handling
     elif N.type == "nod_function":
@@ -899,10 +921,22 @@ def gencode(N, file, count_only=False):
         gencode(N.children[0], file)
         generate_function_epilogue(file, var_count)
     elif N.type == "nod_call":
-        file.write(f"  prep {N.value} ;{N.value}\n")
-        for arg in N.children[1:]:
-            gencode(arg, file)
-        file.write(f"  call {len(N.children) - 1}\n")
+        if N.value == "malloc":
+            gencode(N.children[1], file)
+            file.write("  dup\n")      
+            file.write("  push 0\n")      
+            file.write("  get 0\n")       
+            file.write("  dup\n")      
+            file.write("  swap\n")      
+            file.write("  add\n")      
+            file.write("  push 0\n")     
+            file.write("  swap\n")      
+            file.write("  set 0\n")      
+        else:
+            file.write(f"  prep {N.value} ;{N.value}\n")
+            for arg in N.children[1:]:
+                gencode(arg, file)
+            file.write(f"  call {len(N.children) - 1}\n")
     elif N.type == "nod_return":
         gencode(N.children[0], file)
         file.write("  ret\n")
@@ -925,39 +959,73 @@ def gencode(N, file, count_only=False):
     
     
 # ---------------------------- main ----------------------------
+import os
+import glob
 
+def compile_file(input_file, output_file):
+    global line_counter, character_counter, line_character_counter, T, L
+    global label_counter, nbVar, var_scopes, code
 
-code_line = open("code.c", 'r').read().split("\n")
-code = ""
-for line in code_line:
-    for c in line:
-        code += c
-    code += "\\n"
+    # Reset global state for each file
+    line_counter = 1
+    character_counter = 0
+    line_character_counter = 0
+    T = None
+    L = None
+    label_counter = 0
+    nbVar = 0
+    var_scopes = [Scope()]
 
-line_counter = 1
-character_counter = 0
-line_character_counter = 0
-T = None
-L = None
-label_counter = 0
-nbVar = 0
-# List of scopes, each scope is made of symbols (name, type, adress, value)
-var_scopes = [Scope()]
+    # Add malloc to global scope
+    global_scope = var_scopes[0]
+    global_scope.add_symbol("malloc", Symbol("malloc", "function", None, ["n"]))
 
-# Open the output file
-with open('code.asm', 'w') as output_file:
-    generate_start(output_file)
-    tokens = analex(code)
-    next()
-    push_scope()
-    ast = anasynth() 
-    semantic_analysis(ast) 
-    ret_generated = False # flag to check if a return statement has been generated
-    for node in ast:
-        node = Optim(node)
-        ret_generated = gencode(node, output_file)
-        if ret_generated:
-            break
-    pop_scope()
+    # Read input file
+    code_lines = open(input_file, 'r').read().split("\n")
+    code = ""
+    for line in code_lines:
+        for c in line:
+            code += c
+        code += "\\n"
 
-print("Assembly code has been written to 'code.asm'")
+    # Compile
+    with open(output_file, 'w') as out_file:
+        generate_start(out_file)
+        tokens = analex(code)
+        next()
+        push_scope()
+        ast = anasynth()
+        semantic_analysis(ast)
+        ret_generated = False
+        for node in ast:
+            node = Optim(node)
+            ret_generated = gencode(node, out_file)
+            if ret_generated:
+                break
+        pop_scope()
+
+def main(directory):
+    if not os.path.isdir(directory):
+        print(f"{Fore.RED}Error: Invalid directory{Style.RESET_ALL}")
+        return
+    
+    # Get all .c files in the current directory
+    c_files = glob.glob("*.c")
+    
+    if not c_files:
+        print(f"{Fore.YELLOW}Warning: No .c files found in the current directory{Style.RESET_ALL}")
+        return
+
+    for c_file in c_files:
+        # Generate output filename by replacing .c with .asm
+        asm_file = os.path.splitext(c_file)[0] + ".asm"
+        
+        print(f"Compiling {c_file} -> {asm_file}...")
+        try:
+            compile_file(c_file, asm_file)
+            print(f"{Fore.GREEN}Successfully compiled {c_file} to {asm_file}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error compiling {c_file}: {str(e)}{Style.RESET_ALL}")
+
+if __name__ == "__main__":
+    main(".")
