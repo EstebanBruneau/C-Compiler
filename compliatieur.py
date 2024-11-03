@@ -1004,21 +1004,22 @@ def compile_file(input_file, output_file):
                 break
         pop_scope()
 
-def main(directory):
-    if not os.path.isdir(directory):
+def main():
+    if not os.path.isdir("Code"):
         print(f"{Fore.RED}Error: Invalid directory{Style.RESET_ALL}")
         return
     
-    # Get all .c files in the current directory
-    c_files = glob.glob("*.c")
+    # Get all .c files in the Code directory
+    c_files = glob.glob("Code/*.c")
     
     if not c_files:
         print(f"{Fore.YELLOW}Warning: No .c files found in the current directory{Style.RESET_ALL}")
         return
 
     for c_file in c_files:
-        # Generate output filename by replacing .c with .asm
-        asm_file = os.path.splitext(c_file)[0] + ".asm"
+        # Generate output filename by replacing .c with .asm 
+        # Place asm files in the directory "Output"
+        asm_file = c_file.replace(".c", ".asm").replace("Code", "Output")
         
         print(f"Compiling {c_file} -> {asm_file}...")
         try:
@@ -1028,4 +1029,4 @@ def main(directory):
             print(f"{Fore.RED}Error compiling {c_file}: {str(e)}{Style.RESET_ALL}")
 
 if __name__ == "__main__":
-    main(".")
+    main()
