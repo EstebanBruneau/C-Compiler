@@ -7,5 +7,7 @@ resn 0
   resn 0
   push 1
   dbg
+  push 0
+  ret
   drop 0
   ret
