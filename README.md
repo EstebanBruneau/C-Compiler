@@ -103,6 +103,6 @@ Making a compiler for a part of the C language. Handling most of the language to
 
 ## Bonus
 
-|||
-| --- | --- |
-| commentaires | Fonctionne |
+||||
+| --- | --- | --- |
+| commentaires | Fonctionne | Possibilité d'écrire des commentaire commençant par // |
