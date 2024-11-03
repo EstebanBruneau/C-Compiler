@@ -1,10 +1,14 @@
+int f1(int a, int b) {
+    int c;
+    c = a + b;
+    return c;
+}
+
+
 int main() {
-    int i;
-    int j;
-    for (i = 0; i < 10; i=i+1) {
-        debug i;
-        for (j = 0; j < 10; j=j+1) {
-            debug j;
-        }
-    }
+    
+    int c;
+
+    a = f1(a, 3);
+    debug a;
 }

@@ -55,7 +55,7 @@ class Scope:
 init(autoreset=True) # Initialize colorama
 def display_error(message, line=None, character=None):
     error_prefix = f"{Fore.RED}{Style.BRIGHT}Error:{Style.RESET_ALL}"
-    location = f" at line {line-1}" if line else ""
+    location = f" at line {line}" if line else ""
     location += f", character {line_character_counter}" if line_character_counter else ""
     if message == "Unexpected token 'tok_eof'":
         print(f"{error_prefix} Unexpected end of file{location}", file=sys.stderr)
@@ -579,6 +579,7 @@ def instruction():
         
         # Loop Body
         N = Node("nod_for", "for", [init, condition, increment])
+        
         while not check("tok_close_braces"):
             N.add_child(instruction())
         return N
