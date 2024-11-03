@@ -921,10 +921,22 @@ def gencode(N, file, count_only=False):
         gencode(N.children[0], file)
         generate_function_epilogue(file, var_count)
     elif N.type == "nod_call":
-        file.write(f"  prep {N.value} ;{N.value}\n")
-        for arg in N.children[1:]:
-            gencode(arg, file)
-        file.write(f"  call {len(N.children) - 1}\n")
+        if N.value == "malloc":
+            gencode(N.children[1], file)
+            file.write("  dup\n")      
+            file.write("  push 0\n")      
+            file.write("  get 0\n")       
+            file.write("  dup\n")      
+            file.write("  swap\n")      
+            file.write("  add\n")      
+            file.write("  push 0\n")     
+            file.write("  swap\n")      
+            file.write("  set 0\n")      
+        else:
+            file.write(f"  prep {N.value} ;{N.value}\n")
+            for arg in N.children[1:]:
+                gencode(arg, file)
+            file.write(f"  call {len(N.children) - 1}\n")
     elif N.type == "nod_return":
         gencode(N.children[0], file)
         file.write("  ret\n")
@@ -947,39 +959,73 @@ def gencode(N, file, count_only=False):
     
     
 # ---------------------------- main ----------------------------
+import os
+import glob
 
+def compile_file(input_file, output_file):
+    global line_counter, character_counter, line_character_counter, T, L
+    global label_counter, nbVar, var_scopes, code
 
-code_line = open("code.c", 'r').read().split("\n")
-code = "" 
-for line in code_line:
-    for c in line:
-        code += c
-    code += "\\n"
+    # Reset global state for each file
+    line_counter = 1
+    character_counter = 0
+    line_character_counter = 0
+    T = None
+    L = None
+    label_counter = 0
+    nbVar = 0
+    var_scopes = [Scope()]
 
-line_counter = 1
-character_counter = 0
-line_character_counter = 0
-T = None
-L = None
-label_counter = 0
-nbVar = 0
-# List of scopes, each scope is made of symbols (name, type, adress, value)
-var_scopes = [Scope()]
+    # Add malloc to global scope
+    global_scope = var_scopes[0]
+    global_scope.add_symbol("malloc", Symbol("malloc", "function", None, ["n"]))
 
-# Open the output file
-with open('code.asm', 'w') as output_file:
-    generate_start(output_file)
-    tokens = analex(code)
-    next()
-    push_scope()
-    ast = anasynth() 
-    semantic_analysis(ast) 
-    ret_generated = False # flag to check if a return statement has been generated
-    for node in ast:
-        node = Optim(node)
-        ret_generated = gencode(node, output_file)
-        if ret_generated:
-            break
-    pop_scope()
+    # Read input file
+    code_lines = open(input_file, 'r').read().split("\n")
+    code = ""
+    for line in code_lines:
+        for c in line:
+            code += c
+        code += "\\n"
 
-print("\033[32mAssembly code has been written to 'code.asm'\033[0m")
+    # Compile
+    with open(output_file, 'w') as out_file:
+        generate_start(out_file)
+        tokens = analex(code)
+        next()
+        push_scope()
+        ast = anasynth()
+        semantic_analysis(ast)
+        ret_generated = False
+        for node in ast:
+            node = Optim(node)
+            ret_generated = gencode(node, out_file)
+            if ret_generated:
+                break
+        pop_scope()
+
+def main(directory):
+    if not os.path.isdir(directory):
+        print(f"{Fore.RED}Error: Invalid directory{Style.RESET_ALL}")
+        return
+    
+    # Get all .c files in the current directory
+    c_files = glob.glob("*.c")
+    
+    if not c_files:
+        print(f"{Fore.YELLOW}Warning: No .c files found in the current directory{Style.RESET_ALL}")
+        return
+
+    for c_file in c_files:
+        # Generate output filename by replacing .c with .asm
+        asm_file = os.path.splitext(c_file)[0] + ".asm"
+        
+        print(f"Compiling {c_file} -> {asm_file}...")
+        try:
+            compile_file(c_file, asm_file)
+            print(f"{Fore.GREEN}Successfully compiled {c_file} to {asm_file}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error compiling {c_file}: {str(e)}{Style.RESET_ALL}")
+
+if __name__ == "__main__":
+    main(".")

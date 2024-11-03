@@ -4,31 +4,28 @@
 halt
 resn 0
   .main
-  resn 2
-  push 42
+  resn 1
+  push 1
   dup
-  set 0 ; x
-  drop 1
-  get 0 ; x
-  dbg
-  push 0 ; address of x
-  dup
-  set 1 ; ptr
-  drop 1
-  get 1 ; ptr
-  dbg
-  get 1 ; ptr
+  push 0
   get 0
-  push 43
+  dup
+  swap
+  add
+  push 0
+  swap
   set 0
-  get 0 ; x
-  dbg
-  get 1 ; ptr
+  dup
+  set 0 ; ptr
+  drop 1
+  get 0 ; ptr
   get 0
-  dbg
-  get 1 ; ptr
+  push 42
+  set 0
+  get 0 ; ptr
+  get 0
   dbg
   push 0
   ret
-  drop 2
+  drop 1
   ret

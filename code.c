@@ -1,13 +1,7 @@
 int main() {
-    int x;
     int* ptr;
-    x = 42;
-    debug x;          // Should print 42
-    ptr = &x;         // ptr points to x
-    debug ptr;        // Should print the address of x
-    *ptr = 43;        // x = 43
-    debug x;          // Should print 43
-    debug *ptr;       // Should print 43
-    debug ptr;        // Should print the address of x
+    ptr = malloc(1);  // Allocate space for 1 integer
+    *ptr = 42;        // Store 42 at allocated address
+    debug *ptr;       // Should print 42
     return 0;
 }
